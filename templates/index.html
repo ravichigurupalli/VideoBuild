@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Video Builder</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; }
+    .card { max-width: 720px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.06); }
+    label { display: block; margin-top: 12px; font-weight: 600; }
+    input[type="text"], textarea { width: 100%; padding: 10px; margin-top: 6px; border: 1px solid #ccc; border-radius: 8px; }
+    textarea { min-height: 90px; }
+    input[type="file"] { margin-top: 6px; }
+    button { margin-top: 16px; padding: 12px 18px; border: none; border-radius: 8px; background: #2563eb; color: white; font-weight: 700; cursor: pointer; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .status { margin-top: 12px; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>Build & Upload Video</h2>
+    <form id="form">
+      <label>Title
+        <input type="text" name="title" value="{{ defaults.title }}" />
+      </label>
+      <label>Description
+        <textarea name="description">{{ defaults.description }}</textarea>
+      </label>
+      <label>Images (multiple allowed)
+        <input type="file" name="images" multiple accept="image/*" />
+      </label>
+      <button type="submit">Start</button>
+      <div id="status" class="status"></div>
+    </form>
+  </div>
+  <script>
+    const form = document.getElementById('form');
+    const statusEl = document.getElementById('status');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      statusEl.textContent = 'Uploading and building...';
+      const data = new FormData(form);
+      const btn = form.querySelector('button');
+      btn.disabled = true;
+      try {
+        const res = await fetch('/build', { method: 'POST', body: data });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || 'Failed');
+        statusEl.textContent = `Done: ${json.title}`;
+      } catch (err) {
+        statusEl.textContent = 'Error: ' + err.message;
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
