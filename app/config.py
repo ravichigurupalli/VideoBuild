@@ -25,6 +25,8 @@ class Settings:
     fps: int
     category_id: str
     audio_volume: float
+    bgm_volume: float
+    bgm_volume_with_voice: float
     keep_output: bool
     enable_tts: bool
     tts_voice: str | None
@@ -60,6 +62,8 @@ def load_settings(base_dir: Path | None = None) -> Settings:
         fps=int(os.getenv("FPS", "30")),
         category_id=os.getenv("CATEGORY_ID", "22"),
         audio_volume=float(os.getenv("AUDIO_VOLUME", "0.6")),
+        bgm_volume=float(os.getenv("BGM_VOLUME", "0.35")),
+        bgm_volume_with_voice=float(os.getenv("BGM_VOLUME_WITH_VOICE", "0.15")),
         keep_output=env_bool("KEEP_OUTPUT"),
         enable_tts=env_bool("ENABLE_TTS"),
         tts_voice=os.getenv("TTS_VOICE"),

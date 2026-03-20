@@ -4,7 +4,7 @@ from datetime import date
 from pathlib import Path
 from typing import Iterable
 
-from moviepy.editor import ImageClip, AudioFileClip, concatenate_videoclips
+from moviepy.editor import AudioFileClip, CompositeAudioClip, ImageClip, afx, concatenate_videoclips
 
 # Pillow >=10 removed Image.ANTIALIAS; alias it for MoviePy compatibility
 try:  # pragma: no cover - defensive compatibility
@@ -44,15 +44,6 @@ def build_slideshow(settings: Settings, image_paths: Iterable[Path], narration: 
     if not image_list:
         raise FileNotFoundError(f"No images found in {settings.slides_dir}")
 
-    resolution = (settings.resolution_width, settings.resolution_height)
-    clips = []
-    for img_path in sorted(image_list):
-        clip = ImageClip(str(img_path)).set_duration(settings.seconds_per_image)
-        clip = _fit_image_clip(clip, resolution)
-        clips.append(clip)
-
-    video = concatenate_videoclips(clips, method="compose")
-
     voice_path: Path | None = None
     if settings.enable_tts and narration:
         print(f"TTS enabled, narration length={len(narration)}")
@@ -62,14 +53,43 @@ def build_slideshow(settings: Settings, image_paths: Iterable[Path], narration: 
         print("TTS disabled or no narration text")
         print(f"enable_tts: {settings.enable_tts}")
         print(f"narration: {narration}")
+    voice_audio: AudioFileClip | None = None
+    bgm_audio: AudioFileClip | None = None
+
     if voice_path and voice_path.exists():
         print(f"Attaching TTS audio: {voice_path} size={voice_path.stat().st_size}")
-        audio = AudioFileClip(str(voice_path)).volumex(settings.audio_volume)
-        video = video.set_audio(audio)
-    elif settings.audio_file.exists():
+        voice_audio = AudioFileClip(str(voice_path)).volumex(settings.audio_volume)
+
+    base_video_duration = len(image_list) * settings.seconds_per_image
+    target_video_duration = max(base_video_duration, voice_audio.duration if voice_audio else 0)
+    per_image_duration = max(target_video_duration / len(image_list), 0.1)
+    print(
+        f"Image timeline: count={len(image_list)} per_image_duration={per_image_duration:.2f}s total={target_video_duration:.2f}s"
+    )
+
+    resolution = (settings.resolution_width, settings.resolution_height)
+    clips = []
+    for img_path in sorted(image_list):
+        clip = ImageClip(str(img_path)).set_duration(per_image_duration)
+        clip = _fit_image_clip(clip, resolution)
+        clips.append(clip)
+
+    video = concatenate_videoclips(clips, method="compose")
+    if target_video_duration > 0:
+        video = video.set_duration(target_video_duration)
+
+    if settings.audio_file.exists():
         print(f"Using bgm audio: {settings.audio_file}")
-        audio = AudioFileClip(str(settings.audio_file)).volumex(settings.audio_volume)
-        video = video.set_audio(audio)
+        bgm_audio = AudioFileClip(str(settings.audio_file)).fx(afx.audio_loop, duration=video.duration)
+        bgm_level = settings.bgm_volume_with_voice if voice_audio else settings.bgm_volume
+        bgm_audio = bgm_audio.volumex(bgm_level)
+
+    if voice_audio and bgm_audio:
+        video = video.set_audio(CompositeAudioClip([bgm_audio, voice_audio]))
+    elif voice_audio:
+        video = video.set_audio(voice_audio)
+    elif bgm_audio:
+        video = video.set_audio(bgm_audio)
 
     output_path = settings.output_file
     output_path.parent.mkdir(parents=True, exist_ok=True)
