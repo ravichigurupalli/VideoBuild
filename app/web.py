@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import io
 import tempfile
 from pathlib import Path
 from typing import List
+from werkzeug.utils import secure_filename
 
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, send_file
 
 from .config import load_settings
-from .video_builder import build_slideshow, default_title
+from .tts import synthesize_to_file
+from .video_builder import build_slideshow, default_title, natural_sort_key
 from .youtube_client import upload_video
 
 app = Flask(
@@ -40,11 +43,13 @@ def build():
     with tempfile.TemporaryDirectory(prefix="videobuild_") as tmpdir:
         tmp_path = Path(tmpdir)
         saved_paths: List[Path] = []
-        for idx, file_storage in enumerate(files, start=1):
+        for file_storage in sorted(files, key=lambda item: natural_sort_key(item.filename or "")):
             if not file_storage.filename:
                 continue
-            ext = Path(file_storage.filename).suffix or ".png"
-            dest = tmp_path / f"slide_{idx:03d}{ext}"
+            safe_name = secure_filename(Path(file_storage.filename).name)
+            if not safe_name:
+                continue
+            dest = tmp_path / safe_name
             file_storage.save(dest)
             saved_paths.append(dest)
 
@@ -56,6 +61,34 @@ def build():
         #upload_video(settings, video_path, title, description)
 
     return {"status": "ok", "title": title}
+
+
+@app.post("/preview-voice")
+def preview_voice():
+    if not settings.enable_tts:
+        return {"error": "TTS preview is disabled. Set ENABLE_TTS=true in .env."}, 400
+
+    description = request.form.get("description") or settings.video_description
+    if not description or not description.strip():
+        return {"error": "Description is required for voice preview."}, 400
+
+    voice_path = synthesize_to_file(settings, description)
+    audio_bytes = voice_path.read_bytes()
+
+    try:
+        if voice_path.exists():
+            voice_path.unlink()
+        if voice_path.parent.exists():
+            voice_path.parent.rmdir()
+    except Exception:
+        pass
+
+    return send_file(
+        io.BytesIO(audio_bytes),
+        mimetype="audio/wav",
+        as_attachment=False,
+        download_name="voice-preview.wav",
+    )
 
 
 if __name__ == "__main__":

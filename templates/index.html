@@ -13,7 +13,10 @@
     input[type="file"] { margin-top: 6px; }
     button { margin-top: 16px; padding: 12px 18px; border: none; border-radius: 8px; background: #2563eb; color: white; font-weight: 700; cursor: pointer; }
     button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .actions { display: flex; gap: 12px; flex-wrap: wrap; }
+    .secondary { background: #111827; }
     .status { margin-top: 12px; font-weight: 600; }
+    audio { margin-top: 12px; width: 100%; }
   </style>
 </head>
 <body>
@@ -29,19 +32,62 @@
       <label>Images (multiple allowed)
         <input type="file" name="images" multiple accept="image/*" />
       </label>
-      <button type="submit">Start</button>
+      <div class="actions">
+        <button type="button" id="previewBtn" class="secondary">Preview Voice</button>
+        <button type="submit" id="buildBtn">Start</button>
+      </div>
       <div id="status" class="status"></div>
+      <audio id="previewAudio" controls hidden></audio>
     </form>
   </div>
   <script>
     const form = document.getElementById('form');
     const statusEl = document.getElementById('status');
+    const previewBtn = document.getElementById('previewBtn');
+    const buildBtn = document.getElementById('buildBtn');
+    const previewAudio = document.getElementById('previewAudio');
+
+    previewBtn.addEventListener('click', async () => {
+      statusEl.textContent = 'Generating voice preview...';
+      previewBtn.disabled = true;
+      buildBtn.disabled = true;
+      previewAudio.hidden = true;
+      previewAudio.pause();
+      if (previewAudio.dataset.objectUrl) {
+        URL.revokeObjectURL(previewAudio.dataset.objectUrl);
+        delete previewAudio.dataset.objectUrl;
+      }
+
+      try {
+        const data = new FormData();
+        data.append('description', form.elements.description.value);
+        const res = await fetch('/preview-voice', { method: 'POST', body: data });
+        if (!res.ok) {
+          const json = await res.json();
+          throw new Error(json.error || 'Failed to preview voice');
+        }
+
+        const blob = await res.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        previewAudio.src = objectUrl;
+        previewAudio.dataset.objectUrl = objectUrl;
+        previewAudio.hidden = false;
+        await previewAudio.play();
+        statusEl.textContent = 'Voice preview ready';
+      } catch (err) {
+        statusEl.textContent = 'Error: ' + err.message;
+      } finally {
+        previewBtn.disabled = false;
+        buildBtn.disabled = false;
+      }
+    });
+
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       statusEl.textContent = 'Uploading and building...';
       const data = new FormData(form);
-      const btn = form.querySelector('button');
-      btn.disabled = true;
+      previewBtn.disabled = true;
+      buildBtn.disabled = true;
       try {
         const res = await fetch('/build', { method: 'POST', body: data });
         const json = await res.json();
@@ -50,7 +96,8 @@
       } catch (err) {
         statusEl.textContent = 'Error: ' + err.message;
       } finally {
-        btn.disabled = false;
+        previewBtn.disabled = false;
+        buildBtn.disabled = false;
       }
     });
   </script>

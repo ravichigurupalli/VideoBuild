@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 from pathlib import Path
+import re
 from typing import Iterable
 
 from moviepy.editor import AudioFileClip, CompositeAudioClip, ImageClip, afx, concatenate_videoclips
@@ -17,6 +18,10 @@ except Exception:
 
 from .config import Settings
 from .tts import synthesize_to_file
+
+
+def natural_sort_key(value: str) -> list[int | str]:
+    return [int(part) if part.isdigit() else part.lower() for part in re.split(r"(\d+)", value)]
 
 
 def _fit_image_clip(clip: ImageClip, resolution: tuple[int, int]) -> ImageClip:
@@ -40,7 +45,10 @@ def _fit_image_clip(clip: ImageClip, resolution: tuple[int, int]) -> ImageClip:
 
 
 def build_slideshow(settings: Settings, image_paths: Iterable[Path], narration: str | None = None) -> Path:
-    image_list = [p for p in image_paths if p.is_file()]
+    image_list = sorted(
+        [p for p in image_paths if p.is_file()],
+        key=lambda path: natural_sort_key(path.name),
+    )
     if not image_list:
         raise FileNotFoundError(f"No images found in {settings.slides_dir}")
 
