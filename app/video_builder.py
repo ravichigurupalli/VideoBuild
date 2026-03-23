@@ -1,15 +1,20 @@
 from __future__ import annotations
 
 from datetime import date
+import json
 from pathlib import Path
 import re
+import wave
 from typing import Iterable
 
-from moviepy.editor import AudioFileClip, CompositeAudioClip, ImageClip, afx, concatenate_videoclips
+import numpy as np
+from moviepy.editor import AudioFileClip, CompositeAudioClip, CompositeVideoClip, ImageClip, afx, concatenate_videoclips
+from vosk import KaldiRecognizer, Model
 
 # Pillow >=10 removed Image.ANTIALIAS; alias it for MoviePy compatibility
 try:  # pragma: no cover - defensive compatibility
     from PIL import Image  # type: ignore
+    from PIL import ImageDraw, ImageFont  # type: ignore
 
     if not hasattr(Image, "ANTIALIAS") and hasattr(Image, "Resampling"):
         Image.ANTIALIAS = Image.Resampling.LANCZOS  # type: ignore[attr-defined]
@@ -18,6 +23,96 @@ except Exception:
 
 from .config import Settings
 from .tts import synthesize_to_file
+
+
+def _hex_to_rgb(value: str) -> tuple[int, int, int]:
+    value = value.strip().lstrip("#")
+    if len(value) != 6:
+        return (255, 255, 255)
+    return tuple(int(value[index:index + 2], 16) for index in range(0, 6, 2))
+
+
+def _normalize_word(word: str) -> str:
+    return re.sub(r"[^a-z0-9']+", "", word.lower())
+
+
+def _extract_word_timings(audio_path: Path, model_path: Path) -> list[dict[str, float | str]]:
+    if not model_path.exists():
+        print(f"Caption timing model not found: {model_path}")
+        return []
+
+    words: list[dict[str, float | str]] = []
+    with wave.open(str(audio_path), "rb") as wav_file:
+        if wav_file.getnchannels() != 1 or wav_file.getsampwidth() != 2 or wav_file.getcomptype() != "NONE":
+            raise ValueError("TTS audio must be mono PCM WAV for Vosk caption timing")
+
+        model = Model(str(model_path))
+        recognizer = KaldiRecognizer(model, wav_file.getframerate())
+        recognizer.SetWords(True)
+
+        while True:
+            data = wav_file.readframes(4000)
+            if len(data) == 0:
+                break
+            if recognizer.AcceptWaveform(data):
+                result = json.loads(recognizer.Result())
+                words.extend(result.get("result", []))
+
+        final_result = json.loads(recognizer.FinalResult())
+        words.extend(final_result.get("result", []))
+
+    return words
+
+
+def _align_caption_words(text: str, timed_words: list[dict[str, float | str]], fallback_duration: float) -> list[dict[str, float | str]]:
+    source_words = [word for word in text.split() if word.strip()]
+    if not source_words:
+        return []
+
+    if not timed_words:
+        chunk_duration = max(fallback_duration / len(source_words), 0.1)
+        return [
+            {
+                "word": word,
+                "start": index * chunk_duration,
+                "end": min((index + 1) * chunk_duration, fallback_duration),
+            }
+            for index, word in enumerate(source_words)
+        ]
+
+    aligned: list[dict[str, float | str]] = []
+    timed_index = 0
+    for word in source_words:
+        normalized_source = _normalize_word(word)
+        matched = None
+        while timed_index < len(timed_words):
+            candidate = timed_words[timed_index]
+            timed_index += 1
+            normalized_candidate = _normalize_word(str(candidate.get("word", "")))
+            if not normalized_source or normalized_candidate == normalized_source:
+                matched = candidate
+                break
+        if matched:
+            aligned.append(
+                {
+                    "word": word,
+                    "start": float(matched.get("start", 0.0)),
+                    "end": float(matched.get("end", 0.0)),
+                }
+            )
+
+    if aligned:
+        return aligned
+
+    chunk_duration = max(fallback_duration / len(source_words), 0.1)
+    return [
+        {
+            "word": word,
+            "start": index * chunk_duration,
+            "end": min((index + 1) * chunk_duration, fallback_duration),
+        }
+        for index, word in enumerate(source_words)
+    ]
 
 
 def natural_sort_key(value: str) -> list[int | str]:
@@ -42,6 +137,186 @@ def _fit_image_clip(clip: ImageClip, resolution: tuple[int, int]) -> ImageClip:
         width=target_width,
         height=target_height,
     )
+
+
+def _caption_chunks(text: str, words_per_chunk: int) -> list[str]:
+    words = [word for word in text.split() if word.strip()]
+    if not words:
+        return []
+    chunk_size = max(words_per_chunk, 1)
+    return [" ".join(words[index:index + chunk_size]) for index in range(0, len(words), chunk_size)]
+
+
+def _load_caption_font(font_size: int):
+    for font_name in ["arialbd.ttf", "arial.ttf", "DejaVuSans-Bold.ttf", "DejaVuSans.ttf"]:
+        try:
+            return ImageFont.truetype(font_name, font_size)
+        except Exception:
+            continue
+    return ImageFont.load_default()
+
+
+def _measure_text(draw: ImageDraw.ImageDraw, text: str, font, stroke_width: int) -> tuple[int, int]:
+    if not text:
+        return (0, 0)
+    left, top, right, bottom = draw.textbbox((0, 0), text, font=font, stroke_width=stroke_width)
+    return right - left, bottom - top
+
+
+def _group_caption_words(words: list[dict[str, float | str]], words_per_chunk: int) -> list[list[dict[str, float | str]]]:
+    chunk_size = max(words_per_chunk, 1)
+    return [words[index:index + chunk_size] for index in range(0, len(words), chunk_size)]
+
+
+def _make_caption_image(
+    words: list[dict[str, float | str]],
+    active_index: int,
+    resolution: tuple[int, int],
+    font_size: int,
+    position_y: float,
+    highlight_color: tuple[int, int, int],
+    inactive_color: tuple[int, int, int],
+    stroke_color: tuple[int, int, int],
+    scale: float = 1.0,
+) -> np.ndarray:
+    width, height = resolution
+    canvas = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(canvas)
+    scaled_font_size = max(int(font_size * scale), 24)
+    font = _load_caption_font(scaled_font_size)
+    max_text_width = int(width * 0.82)
+    lines: list[str] = []
+    line_word_groups: list[list[tuple[int, str]]] = []
+    current_line = ""
+    current_group: list[tuple[int, str]] = []
+
+    for index, word_data in enumerate(words):
+        word = str(word_data["word"])
+        candidate = word if not current_line else f"{current_line} {word}"
+        candidate_width, _ = _measure_text(draw, candidate, font, 4)
+        if candidate_width <= max_text_width:
+            current_line = candidate
+            current_group.append((index, word))
+        else:
+            if current_line:
+                lines.append(current_line)
+                line_word_groups.append(current_group)
+            current_line = word
+            current_group = [(index, word)]
+
+    if current_line:
+        lines.append(current_line)
+        line_word_groups.append(current_group)
+
+    line_spacing = max(int(scaled_font_size * 0.25), 12)
+    line_heights: list[int] = []
+    line_widths: list[int] = []
+    for line in lines:
+        line_width, line_height = _measure_text(draw, line, font, 4)
+        line_widths.append(line_width)
+        line_heights.append(line_height)
+
+    block_height = sum(line_heights) + max(len(lines) - 1, 0) * line_spacing
+    y = int(height * position_y - block_height / 2)
+
+    padding_x = 36
+    padding_y = 24
+    max_line_width = max(line_widths) if line_widths else 0
+    box_width = max_line_width + padding_x * 2
+    box_height = block_height + padding_y * 2
+    box_x1 = int((width - box_width) / 2)
+    box_y1 = y - padding_y
+    box_x2 = box_x1 + box_width
+    box_y2 = box_y1 + box_height
+    draw.rounded_rectangle((box_x1, box_y1, box_x2, box_y2), radius=24, fill=(0, 0, 0, 140))
+
+    current_y = y
+    for line_index, line in enumerate(lines):
+        line_width = line_widths[line_index]
+        x = int((width - line_width) / 2)
+        cursor_x = x
+        word_group = line_word_groups[line_index]
+        for word_index, word in word_group:
+            fill_color = highlight_color if word_index == active_index else inactive_color
+            word_width, _ = _measure_text(draw, word, font, 4)
+            draw.text(
+                (cursor_x, current_y),
+                word,
+                font=font,
+                fill=(*fill_color, 255),
+                stroke_width=4,
+                stroke_fill=(*stroke_color, 255),
+            )
+            space_width, _ = _measure_text(draw, " ", font, 4)
+            cursor_x += word_width + space_width
+        current_y += line_heights[line_index] + line_spacing
+
+    return np.array(canvas)
+
+
+def _build_caption_clips(
+    settings: Settings,
+    text: str,
+    video_duration: float,
+    resolution: tuple[int, int],
+    voice_path: Path | None,
+) -> list[ImageClip]:
+    source_words = _align_caption_words(
+        text,
+        _extract_word_timings(voice_path, settings.caption_vosk_model_path) if voice_path and voice_path.exists() else [],
+        video_duration,
+    )
+    if not source_words or video_duration <= 0:
+        return []
+
+    grouped_words = _group_caption_words(source_words, settings.caption_words_per_chunk)
+    highlight_color = _hex_to_rgb(settings.caption_highlight_color)
+    inactive_color = _hex_to_rgb(settings.caption_inactive_color)
+    stroke_color = _hex_to_rgb(settings.caption_stroke_color)
+    clips: list[ImageClip] = []
+    for group in grouped_words:
+        group_start = float(group[0]["start"])
+        group_end = float(group[-1]["end"])
+        for active_index, word_data in enumerate(group):
+            word_start = float(word_data["start"])
+            word_end = float(word_data["end"])
+            duration = max(word_end - word_start, 0.08)
+            caption_image = _make_caption_image(
+                group,
+                active_index,
+                resolution,
+                settings.caption_font_size,
+                settings.caption_position_y,
+                highlight_color,
+                inactive_color,
+                stroke_color,
+                scale=settings.caption_pop_scale,
+            )
+            clips.append(
+                ImageClip(caption_image, ismask=False)
+                .set_start(word_start)
+                .set_duration(duration)
+                .set_position(("center", "center"))
+            )
+
+        base_image = _make_caption_image(
+            group,
+            -1,
+            resolution,
+            settings.caption_font_size,
+            settings.caption_position_y,
+            highlight_color,
+            inactive_color,
+            stroke_color,
+            scale=1.0,
+        )
+        clips.append(
+            ImageClip(base_image, ismask=False)
+            .set_start(group_start)
+            .set_duration(max(group_end - group_start, 0.1))
+            .set_position(("center", "center"))
+        )
+    return clips
 
 
 def build_slideshow(settings: Settings, image_paths: Iterable[Path], narration: str | None = None) -> Path:
@@ -85,6 +360,11 @@ def build_slideshow(settings: Settings, image_paths: Iterable[Path], narration: 
     video = concatenate_videoclips(clips, method="compose")
     if target_video_duration > 0:
         video = video.set_duration(target_video_duration)
+
+    if settings.enable_captions and narration and narration.strip():
+        caption_clips = _build_caption_clips(settings, narration, video.duration, resolution, voice_path)
+        if caption_clips:
+            video = CompositeVideoClip([video, *caption_clips]).set_duration(video.duration)
 
     if settings.audio_file.exists():
         print(f"Using bgm audio: {settings.audio_file}")
