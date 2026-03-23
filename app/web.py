@@ -39,10 +39,12 @@ def build():
 
     title = request.form.get("title") or default_title(settings)
     description = request.form.get("description") or settings.video_description
+    thumbnail_file = request.files.get("thumbnail")
 
     with tempfile.TemporaryDirectory(prefix="videobuild_") as tmpdir:
         tmp_path = Path(tmpdir)
         saved_paths: List[Path] = []
+        thumbnail_path: Path | None = None
         for file_storage in sorted(files, key=lambda item: natural_sort_key(item.filename or "")):
             if not file_storage.filename:
                 continue
@@ -56,9 +58,15 @@ def build():
         if not saved_paths:
             return {"error": "No valid images"}, 400
 
+        if thumbnail_file and thumbnail_file.filename:
+            thumbnail_name = secure_filename(Path(thumbnail_file.filename).name)
+            if thumbnail_name:
+                thumbnail_path = tmp_path / thumbnail_name
+                thumbnail_file.save(thumbnail_path)
+
         narration = description if settings.enable_tts else None
         video_path = build_slideshow(settings, saved_paths, narration=narration)
-        #upload_video(settings, video_path, title, description)
+        #upload_video(settings, video_path, title, description, thumbnail_path=thumbnail_path)
 
     return {"status": "ok", "title": title}
 

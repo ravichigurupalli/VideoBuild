@@ -36,7 +36,20 @@ def get_youtube_service(settings: Settings):
     return build("youtube", "v3", credentials=creds)
 
 
-def upload_video(settings: Settings, video_path: Path, title: str, description: str) -> str:
+def set_thumbnail(settings: Settings, video_id: str, thumbnail_path: Path) -> None:
+    youtube = get_youtube_service(settings)
+    media = MediaFileUpload(str(thumbnail_path))
+    youtube.thumbnails().set(videoId=video_id, media_body=media).execute()
+    print(f"Thumbnail applied: {thumbnail_path}")
+
+
+def upload_video(
+    settings: Settings,
+    video_path: Path,
+    title: str,
+    description: str,
+    thumbnail_path: Path | None = None,
+) -> str:
     youtube = get_youtube_service(settings)
     body: Dict[str, object] = {
         "snippet": {
@@ -58,4 +71,8 @@ def upload_video(settings: Settings, video_path: Path, title: str, description: 
 
     video_id = response["id"]
     print(f"Uploaded: https://youtube.com/watch?v={video_id}")
+
+    if thumbnail_path and thumbnail_path.exists():
+        set_thumbnail(settings, video_id, thumbnail_path)
+
     return video_id
