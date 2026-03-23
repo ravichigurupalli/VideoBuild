@@ -168,6 +168,14 @@ def _group_caption_words(words: list[dict[str, float | str]], words_per_chunk: i
     return [words[index:index + chunk_size] for index in range(0, len(words), chunk_size)]
 
 
+def _caption_position(resolution: tuple[int, int], overlay_size: tuple[int, int], position_y: float) -> tuple[int, int]:
+    video_width, video_height = resolution
+    overlay_width, overlay_height = overlay_size
+    x = max(int((video_width - overlay_width) / 2), 0)
+    y = max(int(video_height * position_y - overlay_height / 2), 0)
+    return (x, y)
+
+
 def _make_caption_image(
     words: list[dict[str, float | str]],
     active_index: int,
@@ -178,13 +186,13 @@ def _make_caption_image(
     inactive_color: tuple[int, int, int],
     stroke_color: tuple[int, int, int],
     scale: float = 1.0,
-) -> np.ndarray:
+) -> tuple[np.ndarray, tuple[int, int]]:
     width, height = resolution
-    canvas = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(canvas)
     scaled_font_size = max(int(font_size * scale), 24)
     font = _load_caption_font(scaled_font_size)
     max_text_width = int(width * 0.82)
+    measure_image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(measure_image)
     lines: list[str] = []
     line_word_groups: list[list[tuple[int, str]]] = []
     current_line = ""
@@ -217,23 +225,24 @@ def _make_caption_image(
         line_heights.append(line_height)
 
     block_height = sum(line_heights) + max(len(lines) - 1, 0) * line_spacing
-    y = int(height * position_y - block_height / 2)
 
     padding_x = 36
     padding_y = 24
     max_line_width = max(line_widths) if line_widths else 0
     box_width = max_line_width + padding_x * 2
     box_height = block_height + padding_y * 2
-    box_x1 = int((width - box_width) / 2)
-    box_y1 = y - padding_y
-    box_x2 = box_x1 + box_width
-    box_y2 = box_y1 + box_height
+    canvas = Image.new("RGBA", (box_width, box_height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(canvas)
+    box_x1 = 0
+    box_y1 = 0
+    box_x2 = box_width
+    box_y2 = box_height
     draw.rounded_rectangle((box_x1, box_y1, box_x2, box_y2), radius=24, fill=(0, 0, 0, 140))
 
-    current_y = y
+    current_y = padding_y
     for line_index, line in enumerate(lines):
         line_width = line_widths[line_index]
-        x = int((width - line_width) / 2)
+        x = int((box_width - line_width) / 2)
         cursor_x = x
         word_group = line_word_groups[line_index]
         for word_index, word in word_group:
@@ -251,7 +260,7 @@ def _make_caption_image(
             cursor_x += word_width + space_width
         current_y += line_heights[line_index] + line_spacing
 
-    return np.array(canvas)
+    return np.array(canvas), _caption_position(resolution, (box_width, box_height), position_y)
 
 
 def _build_caption_clips(
@@ -261,11 +270,14 @@ def _build_caption_clips(
     resolution: tuple[int, int],
     voice_path: Path | None,
 ) -> list[ImageClip]:
-    source_words = _align_caption_words(
-        text,
-        _extract_word_timings(voice_path, settings.caption_vosk_model_path) if voice_path and voice_path.exists() else [],
-        video_duration,
-    )
+    timed_words: list[dict[str, float | str]] = []
+    if voice_path and voice_path.exists():
+        try:
+            timed_words = _extract_word_timings(voice_path, settings.caption_vosk_model_path)
+        except Exception as exc:
+            print(f"Caption timing extraction failed, falling back to estimated timings: {exc}")
+
+    source_words = _align_caption_words(text, timed_words, video_duration)
     if not source_words or video_duration <= 0:
         return []
 
@@ -281,7 +293,7 @@ def _build_caption_clips(
             word_start = float(word_data["start"])
             word_end = float(word_data["end"])
             duration = max(word_end - word_start, 0.08)
-            caption_image = _make_caption_image(
+            caption_image, caption_position = _make_caption_image(
                 group,
                 active_index,
                 resolution,
@@ -296,10 +308,10 @@ def _build_caption_clips(
                 ImageClip(caption_image, ismask=False)
                 .set_start(word_start)
                 .set_duration(duration)
-                .set_position(("center", "center"))
+                .set_position(caption_position)
             )
 
-        base_image = _make_caption_image(
+        base_image, base_position = _make_caption_image(
             group,
             -1,
             resolution,
@@ -314,7 +326,7 @@ def _build_caption_clips(
             ImageClip(base_image, ismask=False)
             .set_start(group_start)
             .set_duration(max(group_end - group_start, 0.1))
-            .set_position(("center", "center"))
+            .set_position(base_position)
         )
     return clips
 
