@@ -31,15 +31,6 @@ class Settings:
     enable_tts: bool
     tts_voice: str | None
     tts_rate: int
-    enable_captions: bool
-    caption_font_size: int
-    caption_words_per_chunk: int
-    caption_vosk_model_path: Path
-    caption_highlight_color: str
-    caption_inactive_color: str
-    caption_stroke_color: str
-    caption_position_y: float
-    caption_pop_scale: float
 
 
 def load_settings(base_dir: Path | None = None) -> Settings:
@@ -77,15 +68,6 @@ def load_settings(base_dir: Path | None = None) -> Settings:
         enable_tts=env_bool("ENABLE_TTS"),
         tts_voice=os.getenv("TTS_VOICE"),
         tts_rate=int(os.getenv("TTS_RATE", "180")),
-        enable_captions=env_bool("ENABLE_CAPTIONS", "true"),
-        caption_font_size=int(os.getenv("CAPTION_FONT_SIZE", "84")),
-        caption_words_per_chunk=int(os.getenv("CAPTION_WORDS_PER_CHUNK", "1")),
-        caption_vosk_model_path=base / os.getenv("CAPTION_VOSK_MODEL_PATH", "models/vosk-model-small-en-us-0.15"),
-        caption_highlight_color=os.getenv("CAPTION_HIGHLIGHT_COLOR", "#FACC15"),
-        caption_inactive_color=os.getenv("CAPTION_INACTIVE_COLOR", "#FFFFFF"),
-        caption_stroke_color=os.getenv("CAPTION_STROKE_COLOR", "#000000"),
-        caption_position_y=float(os.getenv("CAPTION_POSITION_Y", "0.72")),
-        caption_pop_scale=float(os.getenv("CAPTION_POP_SCALE", "1.12")),
     )
 
     print(f"Settings.enable_tts={settings.enable_tts}")
