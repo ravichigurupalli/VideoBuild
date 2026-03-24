@@ -8,7 +8,7 @@ import wave
 from typing import Iterable
 
 import numpy as np
-from moviepy.editor import AudioFileClip, CompositeAudioClip, CompositeVideoClip, ImageClip, afx, concatenate_videoclips
+from moviepy.editor import AudioFileClip, CompositeAudioClip, CompositeVideoClip, ImageClip, VideoClip, afx, concatenate_videoclips
 from vosk import KaldiRecognizer, Model
 
 # Pillow >=10 removed Image.ANTIALIAS; alias it for MoviePy compatibility
@@ -176,6 +176,15 @@ def _caption_position(resolution: tuple[int, int], overlay_size: tuple[int, int]
     return (x, y)
 
 
+def _active_word_index(words: list[dict[str, float | str]], current_time: float) -> int:
+    for index, word in enumerate(words):
+        start = float(word["start"])
+        end = float(word["end"])
+        if start <= current_time < end:
+            return index
+    return -1
+
+
 def _make_caption_image(
     words: list[dict[str, float | str]],
     active_index: int,
@@ -289,12 +298,14 @@ def _build_caption_clips(
     for group in grouped_words:
         group_start = float(group[0]["start"])
         group_end = float(group[-1]["end"])
-        for active_index, word_data in enumerate(group):
-            word_start = float(word_data["start"])
-            word_end = float(word_data["end"])
-            duration = max(word_end - word_start, 0.08)
-            caption_image, caption_position = _make_caption_image(
-                group,
+        duration = max(group_end - group_start, 0.1)
+
+        def make_frame(t: float, *, group_words=group):
+            current_time = group_start + t
+            active_index = _active_word_index(group_words, current_time)
+            scale = settings.caption_pop_scale if active_index >= 0 else 1.0
+            caption_image, _ = _make_caption_image(
+                group_words,
                 active_index,
                 resolution,
                 settings.caption_font_size,
@@ -302,32 +313,25 @@ def _build_caption_clips(
                 highlight_color,
                 inactive_color,
                 stroke_color,
-                scale=settings.caption_pop_scale,
+                scale=scale,
             )
-            clips.append(
-                ImageClip(caption_image, ismask=False)
-                .set_start(word_start)
-                .set_duration(duration)
-                .set_position(caption_position)
-            )
+            return caption_image
 
-        base_image, base_position = _make_caption_image(
+        initial_image, initial_position = _make_caption_image(
             group,
-            -1,
+            _active_word_index(group, group_start),
             resolution,
             settings.caption_font_size,
             settings.caption_position_y,
             highlight_color,
             inactive_color,
             stroke_color,
-            scale=1.0,
+            scale=settings.caption_pop_scale if _active_word_index(group, group_start) >= 0 else 1.0,
         )
-        clips.append(
-            ImageClip(base_image, ismask=False)
-            .set_start(group_start)
-            .set_duration(max(group_end - group_start, 0.1))
-            .set_position(base_position)
-        )
+        animated_clip = VideoClip(make_frame=make_frame, duration=duration).set_start(group_start)
+        animated_clip = animated_clip.set_position(initial_position)
+        animated_clip.size = (initial_image.shape[1], initial_image.shape[0])
+        clips.append(animated_clip)
     return clips
 
 
