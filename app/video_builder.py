@@ -300,7 +300,7 @@ def _build_caption_clips(
         group_end = float(group[-1]["end"])
         duration = max(group_end - group_start, 0.1)
 
-        def make_frame(t: float, *, group_words=group):
+        def render_rgba_frame(t: float, *, group_words=group):
             current_time = group_start + t
             active_index = _active_word_index(group_words, current_time)
             scale = settings.caption_pop_scale if active_index >= 0 else 1.0
@@ -317,6 +317,12 @@ def _build_caption_clips(
             )
             return caption_image
 
+        def make_frame(t: float, *, group_words=group):
+            return render_rgba_frame(t, group_words=group)[:, :, :3]
+
+        def make_mask_frame(t: float, *, group_words=group):
+            return render_rgba_frame(t, group_words=group)[:, :, 3] / 255.0
+
         initial_image, initial_position = _make_caption_image(
             group,
             _active_word_index(group, group_start),
@@ -330,6 +336,7 @@ def _build_caption_clips(
         )
         animated_clip = VideoClip(make_frame=make_frame, duration=duration).set_start(group_start)
         animated_clip = animated_clip.set_position(initial_position)
+        animated_clip.mask = VideoClip(make_frame=make_mask_frame, ismask=True, duration=duration).set_start(group_start)
         animated_clip.size = (initial_image.shape[1], initial_image.shape[0])
         clips.append(animated_clip)
     return clips
