@@ -8,7 +8,7 @@ import wave
 from typing import Iterable
 
 import numpy as np
-from moviepy.editor import AudioFileClip, CompositeAudioClip, CompositeVideoClip, ImageClip, VideoClip, afx, concatenate_videoclips
+from moviepy.editor import AudioFileClip, CompositeAudioClip, ImageClip, afx, concatenate_videoclips
 from vosk import KaldiRecognizer, Model
 
 # Pillow >=10 removed Image.ANTIALIAS; alias it for MoviePy compatibility
@@ -272,13 +272,12 @@ def _make_caption_image(
     return np.array(canvas), _caption_position(resolution, (box_width, box_height), position_y)
 
 
-def _build_caption_clips(
+def _build_caption_groups(
     settings: Settings,
     text: str,
     video_duration: float,
-    resolution: tuple[int, int],
     voice_path: Path | None,
-) -> list[ImageClip]:
+) -> list[list[dict[str, float | str]]]:
     timed_words: list[dict[str, float | str]] = []
     if voice_path and voice_path.exists():
         try:
@@ -290,56 +289,60 @@ def _build_caption_clips(
     if not source_words or video_duration <= 0:
         return []
 
-    grouped_words = _group_caption_words(source_words, settings.caption_words_per_chunk)
+    return _group_caption_words(source_words, settings.caption_words_per_chunk)
+
+
+def _find_active_group(groups: list[list[dict[str, float | str]]], current_time: float) -> list[dict[str, float | str]] | None:
+    for group in groups:
+        group_start = float(group[0]["start"])
+        group_end = float(group[-1]["end"])
+        if group_start <= current_time <= group_end:
+            return group
+    return None
+
+
+def _burn_caption_frame(
+    frame: np.ndarray,
+    current_time: float,
+    groups: list[list[dict[str, float | str]]],
+    settings: Settings,
+    resolution: tuple[int, int],
+) -> np.ndarray:
+    group = _find_active_group(groups, current_time)
+    if not group:
+        return frame
+
     highlight_color = _hex_to_rgb(settings.caption_highlight_color)
     inactive_color = _hex_to_rgb(settings.caption_inactive_color)
     stroke_color = _hex_to_rgb(settings.caption_stroke_color)
-    clips: list[ImageClip] = []
-    for group in grouped_words:
-        group_start = float(group[0]["start"])
-        group_end = float(group[-1]["end"])
-        duration = max(group_end - group_start, 0.1)
+    active_index = _active_word_index(group, current_time)
+    scale = settings.caption_pop_scale if active_index >= 0 else 1.0
+    caption_image, caption_position = _make_caption_image(
+        group,
+        active_index,
+        resolution,
+        settings.caption_font_size,
+        settings.caption_position_y,
+        highlight_color,
+        inactive_color,
+        stroke_color,
+        scale=scale,
+    )
 
-        def render_rgba_frame(t: float, *, group_words=group):
-            current_time = group_start + t
-            active_index = _active_word_index(group_words, current_time)
-            scale = settings.caption_pop_scale if active_index >= 0 else 1.0
-            caption_image, _ = _make_caption_image(
-                group_words,
-                active_index,
-                resolution,
-                settings.caption_font_size,
-                settings.caption_position_y,
-                highlight_color,
-                inactive_color,
-                stroke_color,
-                scale=scale,
-            )
-            return caption_image
+    x, y = caption_position
+    overlay_height, overlay_width = caption_image.shape[:2]
+    frame_height, frame_width = frame.shape[:2]
+    x2 = min(x + overlay_width, frame_width)
+    y2 = min(y + overlay_height, frame_height)
+    if x >= x2 or y >= y2:
+        return frame
 
-        def make_frame(t: float, *, group_words=group):
-            return render_rgba_frame(t, group_words=group)[:, :, :3]
-
-        def make_mask_frame(t: float, *, group_words=group):
-            return render_rgba_frame(t, group_words=group)[:, :, 3] / 255.0
-
-        initial_image, initial_position = _make_caption_image(
-            group,
-            _active_word_index(group, group_start),
-            resolution,
-            settings.caption_font_size,
-            settings.caption_position_y,
-            highlight_color,
-            inactive_color,
-            stroke_color,
-            scale=settings.caption_pop_scale if _active_word_index(group, group_start) >= 0 else 1.0,
-        )
-        animated_clip = VideoClip(make_frame=make_frame, duration=duration).set_start(group_start)
-        animated_clip = animated_clip.set_position(initial_position)
-        animated_clip.mask = VideoClip(make_frame=make_mask_frame, ismask=True, duration=duration).set_start(group_start)
-        animated_clip.size = (initial_image.shape[1], initial_image.shape[0])
-        clips.append(animated_clip)
-    return clips
+    overlay = caption_image[: y2 - y, : x2 - x]
+    alpha = overlay[:, :, 3:4].astype(np.float32) / 255.0
+    base_region = frame[y:y2, x:x2].astype(np.float32)
+    overlay_rgb = overlay[:, :, :3].astype(np.float32)
+    frame[y:y2, x:x2] = (alpha * overlay_rgb + (1.0 - alpha) * base_region).astype(np.uint8)
+    return frame
 
 
 def build_slideshow(settings: Settings, image_paths: Iterable[Path], narration: str | None = None) -> Path:
@@ -385,9 +388,10 @@ def build_slideshow(settings: Settings, image_paths: Iterable[Path], narration: 
         video = video.set_duration(target_video_duration)
 
     if settings.enable_captions and narration and narration.strip():
-        caption_clips = _build_caption_clips(settings, narration, video.duration, resolution, voice_path)
-        if caption_clips:
-            video = CompositeVideoClip([video, *caption_clips]).set_duration(video.duration)
+        caption_groups = _build_caption_groups(settings, narration, video.duration, voice_path)
+        if caption_groups:
+            video = video.fl(lambda gf, t: _burn_caption_frame(gf(t), t, caption_groups, settings, resolution))
+            video = video.set_duration(target_video_duration)
 
     if settings.audio_file.exists():
         print(f"Using bgm audio: {settings.audio_file}")
