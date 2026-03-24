@@ -380,7 +380,7 @@ def build_slideshow(settings: Settings, image_paths: Iterable[Path], narration: 
         clip = _fit_image_clip(clip, resolution)
         clips.append(clip)
 
-    video = concatenate_videoclips(clips, method="compose")
+    video = concatenate_videoclips(clips, method="chain")
     if target_video_duration > 0:
         video = video.set_duration(target_video_duration)
 
