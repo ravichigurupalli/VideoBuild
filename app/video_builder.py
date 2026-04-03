@@ -49,6 +49,7 @@ def build_slideshow(settings: Settings, image_paths: Iterable[Path], narration: 
         [p for p in image_paths if p.is_file()],
         key=lambda path: natural_sort_key(path.name),
     )
+    print("Sorted image list:", [p.name for p in image_list])
     if not image_list:
         raise FileNotFoundError(f"No images found in {settings.slides_dir}")
 
@@ -77,14 +78,13 @@ def build_slideshow(settings: Settings, image_paths: Iterable[Path], narration: 
 
     resolution = (settings.resolution_width, settings.resolution_height)
     clips = []
-    for img_path in sorted(image_list):
-        clip = ImageClip(str(img_path)).set_duration(per_image_duration)
+    for i, img_path in enumerate(image_list):
+        duration = per_image_duration if i < len(image_list) - 1 else max(per_image_duration - 2, 0.1)
+        clip = ImageClip(str(img_path)).set_duration(duration)
         clip = _fit_image_clip(clip, resolution)
         clips.append(clip)
 
     video = concatenate_videoclips(clips, method="chain")
-    if target_video_duration > 0:
-        video = video.set_duration(target_video_duration)
 
     if settings.audio_file.exists():
         print(f"Using bgm audio: {settings.audio_file}")
