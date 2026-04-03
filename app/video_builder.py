@@ -44,7 +44,18 @@ def _fit_image_clip(clip: ImageClip, resolution: tuple[int, int]) -> ImageClip:
     )
 
 
-def build_slideshow(settings: Settings, image_paths: Iterable[Path], narration: str | None = None) -> Path:
+def _resolve_output_resolution(settings: Settings, video_format: str) -> tuple[int, int]:
+    if video_format == "short":
+        return (settings.short_resolution_width, settings.short_resolution_height)
+    return (settings.resolution_width, settings.resolution_height)
+
+
+def build_slideshow(
+    settings: Settings,
+    image_paths: Iterable[Path],
+    narration: str | None = None,
+    video_format: str = "video",
+) -> Path:
     image_list = sorted(
         [p for p in image_paths if p.is_file()],
         key=lambda path: natural_sort_key(path.name),
@@ -76,7 +87,8 @@ def build_slideshow(settings: Settings, image_paths: Iterable[Path], narration: 
         f"Image timeline: count={len(image_list)} per_image_duration={per_image_duration:.2f}s total={target_video_duration:.2f}s"
     )
 
-    resolution = (settings.resolution_width, settings.resolution_height)
+    resolution = _resolve_output_resolution(settings, video_format)
+    print(f"Building format={video_format} resolution={resolution[0]}x{resolution[1]}")
     clips = []
     for i, img_path in enumerate(image_list):
         duration = per_image_duration if i < len(image_list) - 1 else max(per_image_duration - 2, 0.1)

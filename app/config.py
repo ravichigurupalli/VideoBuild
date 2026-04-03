@@ -18,9 +18,12 @@ class Settings:
     video_title_prefix: str
     video_description: str
     video_privacy: str
+    default_video_format: str
     seconds_per_image: int
     resolution_width: int
     resolution_height: int
+    short_resolution_width: int
+    short_resolution_height: int
     bitrate: str
     fps: int
     category_id: str
@@ -55,9 +58,12 @@ def load_settings(base_dir: Path | None = None) -> Settings:
         video_title_prefix=os.getenv("VIDEO_TITLE_PREFIX", "Daily Update"),
         video_description=os.getenv("VIDEO_DESCRIPTION", "Automated daily upload"),
         video_privacy=os.getenv("VIDEO_PRIVACY", "private"),
+        default_video_format=os.getenv("DEFAULT_VIDEO_FORMAT", "video").strip().lower(),
         seconds_per_image=int(os.getenv("SECONDS_PER_IMAGE", "4")),
         resolution_width=int(os.getenv("RESOLUTION_WIDTH", "1920")),
         resolution_height=int(os.getenv("RESOLUTION_HEIGHT", "1080")),
+        short_resolution_width=int(os.getenv("SHORT_RESOLUTION_WIDTH", "1080")),
+        short_resolution_height=int(os.getenv("SHORT_RESOLUTION_HEIGHT", "1920")),
         bitrate=os.getenv("BITRATE", "4000k"),
         fps=int(os.getenv("FPS", "30")),
         category_id=os.getenv("CATEGORY_ID", "22"),

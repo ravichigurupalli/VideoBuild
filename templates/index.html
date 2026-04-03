@@ -8,7 +8,7 @@
     body { font-family: Arial, sans-serif; margin: 24px; }
     .card { max-width: 720px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.06); }
     label { display: block; margin-top: 12px; font-weight: 600; }
-    input[type="text"], textarea { width: 100%; padding: 10px; margin-top: 6px; border: 1px solid #ccc; border-radius: 8px; }
+    input[type="text"], textarea, select { width: 100%; padding: 10px; margin-top: 6px; border: 1px solid #ccc; border-radius: 8px; }
     textarea { min-height: 90px; }
     input[type="file"] { margin-top: 6px; }
     button { margin-top: 16px; padding: 12px 18px; border: none; border-radius: 8px; background: #2563eb; color: white; font-weight: 700; cursor: pointer; }
@@ -28,6 +28,12 @@
       </label>
       <label>Description
         <textarea name="description">{{ defaults.description }}</textarea>
+      </label>
+      <label>Format
+        <select name="video_format">
+          <option value="video" {% if defaults.video_format == 'video' %}selected{% endif %}>Video (16:9)</option>
+          <option value="short" {% if defaults.video_format == 'short' %}selected{% endif %}>Short (9:16)</option>
+        </select>
       </label>
       <label>Images (multiple allowed)
         <input type="file" name="images" multiple accept="image/*" />

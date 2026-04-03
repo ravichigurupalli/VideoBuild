@@ -27,6 +27,7 @@ def index():
             "title": default_title(settings),
             "description": settings.video_description,
             "privacy": settings.video_privacy,
+            "video_format": settings.default_video_format,
         },
     )
 
@@ -39,6 +40,9 @@ def build():
 
     title = request.form.get("title") or default_title(settings)
     description = request.form.get("description") or settings.video_description
+    video_format = (request.form.get("video_format") or settings.default_video_format).strip().lower()
+    if video_format not in {"video", "short"}:
+        return {"error": "Invalid format. Use video or short."}, 400
     thumbnail_file = request.files.get("thumbnail")
 
     with tempfile.TemporaryDirectory(prefix="videobuild_") as tmpdir:
@@ -65,10 +69,10 @@ def build():
                 thumbnail_file.save(thumbnail_path)
 
         narration = description if settings.enable_tts else None
-        video_path = build_slideshow(settings, saved_paths, narration=narration)
+        video_path = build_slideshow(settings, saved_paths, narration=narration, video_format=video_format)
         #upload_video(settings, video_path, title, description, thumbnail_path=thumbnail_path)
 
-    return {"status": "ok", "title": title}
+    return {"status": "ok", "title": title, "video_format": video_format}
 
 
 @app.post("/preview-voice")
