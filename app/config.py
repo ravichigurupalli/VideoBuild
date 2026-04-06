@@ -34,6 +34,7 @@ class Settings:
     enable_tts: bool
     tts_voice: str | None
     tts_rate: int
+    hf_api_token: str | None
 
 
 def load_settings(base_dir: Path | None = None) -> Settings:
@@ -74,6 +75,7 @@ def load_settings(base_dir: Path | None = None) -> Settings:
         enable_tts=env_bool("ENABLE_TTS"),
         tts_voice=os.getenv("TTS_VOICE"),
         tts_rate=int(os.getenv("TTS_RATE", "180")),
+        hf_api_token=os.getenv("HF_API_TOKEN"),
     )
 
     print(f"Settings.enable_tts={settings.enable_tts}")

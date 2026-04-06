@@ -9,6 +9,8 @@ from werkzeug.utils import secure_filename
 from flask import Flask, render_template, request, send_file
 
 from .config import load_settings
+from .image_gen import generate_image
+from .text_to_video import text_to_video
 from .tts import synthesize_to_file
 from .video_builder import build_slideshow, default_title, natural_sort_key
 from .youtube_client import upload_video
@@ -101,6 +103,62 @@ def preview_voice():
         as_attachment=False,
         download_name="voice-preview.wav",
     )
+
+
+@app.post("/text-to-video")
+def t2v():
+    if not settings.hf_api_token:
+        return {"error": "HF_API_TOKEN not set in .env"}, 400
+
+    text = (request.form.get("text") or "").strip()
+    if not text:
+        return {"error": "Text content is required."}, 400
+
+    video_format = (request.form.get("video_format") or settings.default_video_format).strip().lower()
+    if video_format not in {"video", "short"}:
+        return {"error": "Invalid format. Use video or short."}, 400
+
+    try:
+        output_path = text_to_video(settings, text, video_format=video_format)
+        return send_file(
+            str(output_path),
+            mimetype="video/mp4",
+            as_attachment=True,
+            download_name="text_to_video.mp4",
+        )
+    except Exception as exc:
+        print(f"Text-to-video failed: {exc}")
+        return {"error": str(exc)}, 500
+
+
+@app.post("/generate-image")
+def gen_image():
+    if not settings.hf_api_token:
+        return {"error": "HF_API_TOKEN not set in .env"}, 400
+
+    prompt = (request.form.get("prompt") or "").strip()
+    if not prompt:
+        return {"error": "Prompt text is required."}, 400
+
+    video_format = (request.form.get("video_format") or settings.default_video_format).strip().lower()
+    if video_format not in {"video", "short"}:
+        return {"error": "Invalid format. Use video or short."}, 400
+
+    try:
+        with tempfile.TemporaryDirectory(prefix="videobuild_img_") as tmpdir:
+            out_path = Path(tmpdir) / "generated.png"
+            generate_image(prompt, settings.hf_api_token, video_format=video_format, output_path=out_path)
+            image_bytes = out_path.read_bytes()
+
+        return send_file(
+            io.BytesIO(image_bytes),
+            mimetype="image/png",
+            as_attachment=True,
+            download_name="generated_image.png",
+        )
+    except Exception as exc:
+        print(f"Image generation failed: {exc}")
+        return {"error": str(exc)}, 500
 
 
 if __name__ == "__main__":

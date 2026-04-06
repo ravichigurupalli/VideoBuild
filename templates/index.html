@@ -17,6 +17,11 @@
     .secondary { background: #111827; }
     .status { margin-top: 12px; font-weight: 600; }
     audio { margin-top: 12px; width: 100%; }
+    .card + .card { margin-top: 24px; }
+    .img-preview { margin-top: 12px; max-width: 100%; border-radius: 8px; display: none; }
+    .green { background: #16a34a; }
+    .purple { background: #7c3aed; }
+    .video-preview { margin-top: 12px; max-width: 100%; border-radius: 8px; display: none; }
   </style>
 </head>
 <body>
@@ -49,6 +54,47 @@
       <audio id="previewAudio" controls hidden></audio>
     </form>
   </div>
+
+  <div class="card">
+    <h2>Generate Image from Text</h2>
+    <form id="imgForm">
+      <label>Prompt
+        <textarea name="prompt" placeholder="A cinematic sunset over a mountain lake, vibrant colors, 4K"></textarea>
+      </label>
+      <label>Format
+        <select name="video_format">
+          <option value="video" {% if defaults.video_format == 'video' %}selected{% endif %}>Video (16:9)</option>
+          <option value="short" {% if defaults.video_format == 'short' %}selected{% endif %}>Short (9:16)</option>
+        </select>
+      </label>
+      <div class="actions">
+        <button type="submit" id="genBtn" class="green">Generate Image</button>
+      </div>
+      <div id="imgStatus" class="status"></div>
+      <img id="imgPreview" class="img-preview" alt="Generated image" />
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Text to Video (AI Generated)</h2>
+    <form id="t2vForm">
+      <label>Story / Script
+        <textarea name="text" rows="6" placeholder="Enter your full story or script. Each 1-2 sentences become a scene with AI-generated visuals and video clips."></textarea>
+      </label>
+      <label>Format
+        <select name="video_format">
+          <option value="video" {% if defaults.video_format == 'video' %}selected{% endif %}>Video (16:9)</option>
+          <option value="short" {% if defaults.video_format == 'short' %}selected{% endif %}>Short (9:16)</option>
+        </select>
+      </label>
+      <div class="actions">
+        <button type="submit" id="t2vBtn" class="purple">Generate Video</button>
+      </div>
+      <div id="t2vStatus" class="status"></div>
+      <video id="t2vPreview" class="video-preview" controls></video>
+    </form>
+  </div>
+
   <script>
     const form = document.getElementById('form');
     const statusEl = document.getElementById('status');
@@ -101,12 +147,88 @@
         const res = await fetch('/build', { method: 'POST', body: data });
         const json = await res.json();
         if (!res.ok) throw new Error(json.error || 'Failed');
-        statusEl.textContent = `Done: ${json.title}`;
+        statusEl.textContent = `Done: ${json.title} (${json.video_format})`;
       } catch (err) {
         statusEl.textContent = 'Error: ' + err.message;
       } finally {
         previewBtn.disabled = false;
         buildBtn.disabled = false;
+      }
+    });
+
+    // --- Text to Video ---
+    const t2vForm = document.getElementById('t2vForm');
+    const t2vStatus = document.getElementById('t2vStatus');
+    const t2vPreview = document.getElementById('t2vPreview');
+    const t2vBtn = document.getElementById('t2vBtn');
+
+    t2vForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      t2vStatus.textContent = 'Generating video... This takes several minutes (AI images + video clips + TTS + stitching).';
+      t2vPreview.style.display = 'none';
+      t2vBtn.disabled = true;
+
+      if (t2vPreview.dataset.objectUrl) {
+        URL.revokeObjectURL(t2vPreview.dataset.objectUrl);
+        delete t2vPreview.dataset.objectUrl;
+      }
+
+      try {
+        const data = new FormData(t2vForm);
+        const res = await fetch('/text-to-video', { method: 'POST', body: data });
+        if (!res.ok) {
+          const json = await res.json();
+          throw new Error(json.error || 'Text-to-video failed');
+        }
+
+        const blob = await res.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        t2vPreview.src = objectUrl;
+        t2vPreview.dataset.objectUrl = objectUrl;
+        t2vPreview.style.display = 'block';
+        t2vStatus.textContent = 'Video generated! You can preview and right-click to save.';
+      } catch (err) {
+        t2vStatus.textContent = 'Error: ' + err.message;
+      } finally {
+        t2vBtn.disabled = false;
+      }
+    });
+
+    // --- Image Generation ---
+    const imgForm = document.getElementById('imgForm');
+    const imgStatus = document.getElementById('imgStatus');
+    const imgPreview = document.getElementById('imgPreview');
+    const genBtn = document.getElementById('genBtn');
+
+    imgForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      imgStatus.textContent = 'Generating image... (this may take 30-60s)';
+      imgPreview.style.display = 'none';
+      genBtn.disabled = true;
+
+      if (imgPreview.dataset.objectUrl) {
+        URL.revokeObjectURL(imgPreview.dataset.objectUrl);
+        delete imgPreview.dataset.objectUrl;
+      }
+
+      try {
+        const data = new FormData(imgForm);
+        const res = await fetch('/generate-image', { method: 'POST', body: data });
+        if (!res.ok) {
+          const json = await res.json();
+          throw new Error(json.error || 'Image generation failed');
+        }
+
+        const blob = await res.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        imgPreview.src = objectUrl;
+        imgPreview.dataset.objectUrl = objectUrl;
+        imgPreview.style.display = 'block';
+        imgStatus.textContent = 'Image generated! Right-click to save.';
+      } catch (err) {
+        imgStatus.textContent = 'Error: ' + err.message;
+      } finally {
+        genBtn.disabled = false;
       }
     });
   </script>
