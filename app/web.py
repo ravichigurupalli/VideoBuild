@@ -10,6 +10,7 @@ from flask import Flask, render_template, request, send_file
 
 from .config import load_settings
 from .image_gen import generate_image
+from .script_gen import generate_script, DURATION_OPTIONS
 from .text_to_video import text_to_video
 from .tts import synthesize_to_file
 from .video_builder import build_slideshow, default_title, natural_sort_key
@@ -103,6 +104,31 @@ def preview_voice():
         as_attachment=False,
         download_name="voice-preview.wav",
     )
+
+
+@app.post("/generate-script")
+def gen_script():
+    if not settings.hf_api_token:
+        return {"error": "HF_API_TOKEN not set in .env"}, 400
+
+    topic = (request.form.get("topic") or "").strip()
+    if not topic:
+        return {"error": "Topic is required."}, 400
+
+    duration = (request.form.get("duration") or "60s").strip()
+    if duration not in DURATION_OPTIONS:
+        return {"error": f"Invalid duration. Use one of: {', '.join(DURATION_OPTIONS)}"}, 400
+
+    video_format = (request.form.get("video_format") or settings.default_video_format).strip().lower()
+    if video_format not in {"video", "short"}:
+        return {"error": "Invalid format. Use video or short."}, 400
+
+    try:
+        script = generate_script(topic, settings.hf_api_token, duration_label=duration, video_format=video_format)
+        return {"status": "ok", "script": script}
+    except Exception as exc:
+        print(f"Script generation failed: {exc}")
+        return {"error": str(exc)}, 500
 
 
 @app.post("/text-to-video")

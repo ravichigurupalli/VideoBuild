@@ -21,7 +21,18 @@
     .img-preview { margin-top: 12px; max-width: 100%; border-radius: 8px; display: none; }
     .green { background: #16a34a; }
     .purple { background: #7c3aed; }
+    .orange { background: #ea580c; }
     .video-preview { margin-top: 12px; max-width: 100%; border-radius: 8px; display: none; }
+    .mode-tabs { display: flex; gap: 0; margin-top: 12px; }
+    .mode-tab { flex: 1; padding: 10px; text-align: center; font-weight: 700; cursor: pointer; border: 1px solid #ccc; background: #f3f4f6; margin-top: 0; color: #374151; }
+    .mode-tab:first-child { border-radius: 8px 0 0 8px; }
+    .mode-tab:last-child { border-radius: 0 8px 8px 0; }
+    .mode-tab.active { background: #7c3aed; color: white; border-color: #7c3aed; }
+    .mode-panel { display: none; }
+    .mode-panel.active { display: block; }
+    .script-box { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; margin-top: 8px; white-space: pre-wrap; font-size: 14px; line-height: 1.6; min-height: 80px; max-height: 300px; overflow-y: auto; }
+    .row { display: flex; gap: 12px; }
+    .row > label { flex: 1; }
   </style>
 </head>
 <body>
@@ -77,22 +88,71 @@
 
   <div class="card">
     <h2>Text to Video (AI Generated)</h2>
-    <form id="t2vForm">
-      <label>Story / Script
-        <textarea name="text" rows="6" placeholder="Enter your full story or script. Each 1-2 sentences become a scene with AI-generated visuals and video clips."></textarea>
-      </label>
-      <label>Format
-        <select name="video_format">
-          <option value="video" {% if defaults.video_format == 'video' %}selected{% endif %}>Video (16:9)</option>
-          <option value="short" {% if defaults.video_format == 'short' %}selected{% endif %}>Short (9:16)</option>
-        </select>
-      </label>
-      <div class="actions">
-        <button type="submit" id="t2vBtn" class="purple">Generate Video</button>
+
+    <div class="mode-tabs">
+      <button type="button" class="mode-tab active" data-mode="topic">Generate Script from Topic</button>
+      <button type="button" class="mode-tab" data-mode="custom">Use Custom Text</button>
+    </div>
+
+    <!-- Mode 1: Generate from Topic -->
+    <div id="topicPanel" class="mode-panel active">
+      <form id="topicForm">
+        <label>Topic / Idea
+          <textarea name="topic" rows="3" placeholder="e.g. What are Hybrid Models? Combining traditional ML with Generative AI for better accuracy."></textarea>
+        </label>
+        <div class="row">
+          <label>Duration
+            <select name="duration">
+              <option value="30s">30 seconds</option>
+              <option value="60s" selected>60 seconds</option>
+              <option value="90s">90 seconds</option>
+              <option value="2min">2 minutes</option>
+              <option value="3min">3 minutes</option>
+            </select>
+          </label>
+          <label>Format
+            <select name="video_format">
+              <option value="video" {% if defaults.video_format == 'video' %}selected{% endif %}>Video (16:9)</option>
+              <option value="short" {% if defaults.video_format == 'short' %}selected{% endif %}>Short (9:16)</option>
+            </select>
+          </label>
+        </div>
+        <div class="actions">
+          <button type="submit" id="scriptBtn" class="orange">1. Generate Script</button>
+        </div>
+      </form>
+      <div id="scriptStatus" class="status"></div>
+      <div id="scriptPreview" class="script-box" style="display:none"></div>
+      <div id="scriptEditWrap" style="display:none">
+        <label>Edit Script (optional)
+          <textarea id="scriptEdit" name="edited_script" rows="6"></textarea>
+        </label>
+        <div class="actions">
+          <button type="button" id="scriptToVideoBtn" class="purple">2. Generate Video from Script</button>
+        </div>
       </div>
-      <div id="t2vStatus" class="status"></div>
-      <video id="t2vPreview" class="video-preview" controls></video>
-    </form>
+    </div>
+
+    <!-- Mode 2: Custom Text -->
+    <div id="customPanel" class="mode-panel">
+      <form id="t2vForm">
+        <label>Story / Script
+          <textarea name="text" rows="6" placeholder="Enter your full story or script. Each 1-2 sentences become a scene with AI-generated visuals and video clips."></textarea>
+        </label>
+        <label>Format
+          <select name="video_format">
+            <option value="video" {% if defaults.video_format == 'video' %}selected{% endif %}>Video (16:9)</option>
+            <option value="short" {% if defaults.video_format == 'short' %}selected{% endif %}>Short (9:16)</option>
+          </select>
+        </label>
+        <div class="actions">
+          <button type="submit" id="t2vBtn" class="purple">Generate Video</button>
+        </div>
+      </form>
+    </div>
+
+    <div id="t2vStatus" class="status"></div>
+    <video id="t2vPreview" class="video-preview" controls></video>
   </div>
 
   <script>
@@ -156,17 +216,28 @@
       }
     });
 
-    // --- Text to Video ---
-    const t2vForm = document.getElementById('t2vForm');
+    // --- Mode Tabs ---
+    const modeTabs = document.querySelectorAll('.mode-tab');
+    const topicPanel = document.getElementById('topicPanel');
+    const customPanel = document.getElementById('customPanel');
+
+    modeTabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        modeTabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        topicPanel.classList.toggle('active', tab.dataset.mode === 'topic');
+        customPanel.classList.toggle('active', tab.dataset.mode === 'custom');
+      });
+    });
+
+    // --- Text to Video (shared) ---
     const t2vStatus = document.getElementById('t2vStatus');
     const t2vPreview = document.getElementById('t2vPreview');
-    const t2vBtn = document.getElementById('t2vBtn');
 
-    t2vForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
+    async function generateVideoFromText(text, videoFormat, btn) {
       t2vStatus.textContent = 'Generating video... This takes several minutes (AI images + video clips + TTS + stitching).';
       t2vPreview.style.display = 'none';
-      t2vBtn.disabled = true;
+      btn.disabled = true;
 
       if (t2vPreview.dataset.objectUrl) {
         URL.revokeObjectURL(t2vPreview.dataset.objectUrl);
@@ -174,7 +245,9 @@
       }
 
       try {
-        const data = new FormData(t2vForm);
+        const data = new FormData();
+        data.append('text', text);
+        data.append('video_format', videoFormat);
         const res = await fetch('/text-to-video', { method: 'POST', body: data });
         if (!res.ok) {
           const json = await res.json();
@@ -190,8 +263,61 @@
       } catch (err) {
         t2vStatus.textContent = 'Error: ' + err.message;
       } finally {
-        t2vBtn.disabled = false;
+        btn.disabled = false;
       }
+    }
+
+    // --- Mode 1: Generate Script from Topic ---
+    const topicForm = document.getElementById('topicForm');
+    const scriptBtn = document.getElementById('scriptBtn');
+    const scriptStatus = document.getElementById('scriptStatus');
+    const scriptPreview = document.getElementById('scriptPreview');
+    const scriptEditWrap = document.getElementById('scriptEditWrap');
+    const scriptEdit = document.getElementById('scriptEdit');
+    const scriptToVideoBtn = document.getElementById('scriptToVideoBtn');
+
+    topicForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      scriptStatus.textContent = 'Generating script from your topic...';
+      scriptPreview.style.display = 'none';
+      scriptEditWrap.style.display = 'none';
+      scriptBtn.disabled = true;
+
+      try {
+        const data = new FormData(topicForm);
+        const res = await fetch('/generate-script', { method: 'POST', body: data });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || 'Script generation failed');
+
+        scriptPreview.textContent = json.script;
+        scriptPreview.style.display = 'block';
+        scriptEdit.value = json.script;
+        scriptEditWrap.style.display = 'block';
+        scriptStatus.textContent = 'Script generated! Review, edit if needed, then click Generate Video.';
+      } catch (err) {
+        scriptStatus.textContent = 'Error: ' + err.message;
+      } finally {
+        scriptBtn.disabled = false;
+      }
+    });
+
+    scriptToVideoBtn.addEventListener('click', () => {
+      const text = scriptEdit.value.trim();
+      if (!text) { t2vStatus.textContent = 'Error: Script is empty.'; return; }
+      const fmt = topicForm.elements.video_format.value;
+      generateVideoFromText(text, fmt, scriptToVideoBtn);
+    });
+
+    // --- Mode 2: Custom Text ---
+    const t2vForm = document.getElementById('t2vForm');
+    const t2vBtn = document.getElementById('t2vBtn');
+
+    t2vForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const text = t2vForm.elements.text.value.trim();
+      if (!text) { t2vStatus.textContent = 'Error: Text is required.'; return; }
+      const fmt = t2vForm.elements.video_format.value;
+      generateVideoFromText(text, fmt, t2vBtn);
     });
 
     // --- Image Generation ---
