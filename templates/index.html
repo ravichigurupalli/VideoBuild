@@ -123,6 +123,12 @@
               <option value="short" {% if defaults.video_format == 'short' %}selected{% endif %}>Short (9:16)</option>
             </select>
           </label>
+          <label>Style
+            <select name="video_style">
+              <option value="static">Static (slideshow)</option>
+              <option value="animated" selected>Animated (pan/zoom + subtitles)</option>
+            </select>
+          </label>
         </div>
         <div class="actions">
           <button type="submit" id="scriptBtn" class="orange">1. Generate Script</button>
@@ -146,12 +152,20 @@
         <label>Story / Script
           <textarea name="text" rows="6" placeholder="Enter your full story or script. Each 1-2 sentences become a scene with AI-generated visuals and video clips."></textarea>
         </label>
-        <label>Format
-          <select name="video_format">
-            <option value="video" {% if defaults.video_format == 'video' %}selected{% endif %}>Video (16:9)</option>
-            <option value="short" {% if defaults.video_format == 'short' %}selected{% endif %}>Short (9:16)</option>
-          </select>
-        </label>
+        <div class="row">
+          <label>Format
+            <select name="video_format">
+              <option value="video" {% if defaults.video_format == 'video' %}selected{% endif %}>Video (16:9)</option>
+              <option value="short" {% if defaults.video_format == 'short' %}selected{% endif %}>Short (9:16)</option>
+            </select>
+          </label>
+          <label>Style
+            <select name="video_style">
+              <option value="static">Static (slideshow)</option>
+              <option value="animated" selected>Animated (pan/zoom + subtitles)</option>
+            </select>
+          </label>
+        </div>
         <div class="actions">
           <button type="submit" id="t2vBtn" class="purple">Generate Video</button>
         </div>
@@ -241,7 +255,7 @@
     const t2vStatus = document.getElementById('t2vStatus');
     const t2vPreview = document.getElementById('t2vPreview');
 
-    async function generateVideoFromText(text, videoFormat, btn) {
+    async function generateVideoFromText(text, videoFormat, videoStyle, btn) {
       t2vStatus.textContent = 'Generating video... This takes several minutes (AI images + video clips + TTS + stitching).';
       t2vPreview.style.display = 'none';
       btn.disabled = true;
@@ -255,6 +269,7 @@
         const data = new FormData();
         data.append('text', text);
         data.append('video_format', videoFormat);
+        data.append('video_style', videoStyle);
         const res = await fetch('/text-to-video', { method: 'POST', body: data });
         if (!res.ok) {
           const json = await res.json();
@@ -312,7 +327,8 @@
       const text = scriptEdit.value.trim();
       if (!text) { t2vStatus.textContent = 'Error: Script is empty.'; return; }
       const fmt = topicForm.elements.video_format.value;
-      generateVideoFromText(text, fmt, scriptToVideoBtn);
+      const sty = topicForm.elements.video_style.value;
+      generateVideoFromText(text, fmt, sty, scriptToVideoBtn);
     });
 
     // --- Mode 2: Custom Text ---
@@ -324,7 +340,8 @@
       const text = t2vForm.elements.text.value.trim();
       if (!text) { t2vStatus.textContent = 'Error: Text is required.'; return; }
       const fmt = t2vForm.elements.video_format.value;
-      generateVideoFromText(text, fmt, t2vBtn);
+      const sty = t2vForm.elements.video_style.value;
+      generateVideoFromText(text, fmt, sty, t2vBtn);
     });
 
     // --- Image Generation ---

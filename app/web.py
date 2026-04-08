@@ -11,7 +11,7 @@ from flask import Flask, render_template, request, send_file
 from .config import load_settings
 from .image_gen import generate_image
 from .script_gen import generate_script, DURATION_OPTIONS, PROVIDERS
-from .text_to_video import text_to_video
+from .text_to_video import text_to_video, VIDEO_STYLES
 from .tts import synthesize_to_file
 from .video_builder import build_slideshow, default_title, natural_sort_key
 from .youtube_client import upload_video
@@ -153,8 +153,12 @@ def t2v():
     if video_format not in {"video", "short"}:
         return {"error": "Invalid format. Use video or short."}, 400
 
+    video_style = (request.form.get("video_style") or "static").strip().lower()
+    if video_style not in VIDEO_STYLES:
+        return {"error": f"Invalid style. Use one of: {', '.join(VIDEO_STYLES)}"}, 400
+
     try:
-        output_path = text_to_video(settings, text, video_format=video_format)
+        output_path = text_to_video(settings, text, video_format=video_format, video_style=video_style)
         return send_file(
             str(output_path),
             mimetype="video/mp4",

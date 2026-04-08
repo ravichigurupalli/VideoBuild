@@ -1,18 +1,24 @@
 from __future__ import annotations
 
+import random
 import re
 import tempfile
 from pathlib import Path
 
+import numpy as np
 import requests
 from moviepy.editor import (
     AudioFileClip,
     CompositeAudioClip,
+    CompositeVideoClip,
     ImageClip,
+    TextClip,
     VideoFileClip,
     afx,
     concatenate_videoclips,
 )
+
+VIDEO_STYLES = ("static", "animated")
 
 try:
     from PIL import Image
@@ -118,10 +124,122 @@ def _fit_video_clip(clip: VideoFileClip, resolution: tuple[int, int]) -> VideoFi
 # Main pipeline
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Animation helpers
+# ---------------------------------------------------------------------------
+
+def _ken_burns_clip(
+    img_path: str,
+    duration: float,
+    resolution: tuple[int, int],
+    fps: int = 30,
+) -> VideoFileClip:
+    """Create a smooth pan/zoom (Ken Burns) clip from a static image."""
+    target_w, target_h = resolution
+    img = Image.open(img_path).convert("RGB")
+
+    # Work at 1.3x resolution so we have room to pan/zoom
+    canvas_w = int(target_w * 1.3)
+    canvas_h = int(target_h * 1.3)
+    img_ratio = img.width / img.height
+    canvas_ratio = canvas_w / canvas_h
+    if img_ratio > canvas_ratio:
+        img = img.resize((canvas_w, int(canvas_w / img_ratio)), Image.LANCZOS)
+    else:
+        img = img.resize((int(canvas_h * img_ratio), canvas_h), Image.LANCZOS)
+    # Center-pad to canvas size
+    padded = Image.new("RGB", (canvas_w, canvas_h), (0, 0, 0))
+    padded.paste(img, ((canvas_w - img.width) // 2, (canvas_h - img.height) // 2))
+    img_array = np.array(padded)
+
+    # Random pan/zoom direction
+    effects = ["zoom_in", "zoom_out", "pan_left", "pan_right"]
+    effect = random.choice(effects)
+
+    def make_frame(t):
+        progress = t / max(duration, 0.01)
+        if effect == "zoom_in":
+            scale = 1.0 + 0.2 * progress
+        elif effect == "zoom_out":
+            scale = 1.2 - 0.2 * progress
+        elif effect == "pan_left":
+            scale = 1.15
+        else:  # pan_right
+            scale = 1.15
+
+        crop_w = int(target_w / scale)
+        crop_h = int(target_h / scale)
+        max_x = canvas_w - crop_w
+        max_y = canvas_h - crop_h
+        cx = max_x // 2
+        cy = max_y // 2
+
+        if effect == "pan_left":
+            cx = int(max_x * (1.0 - progress))
+        elif effect == "pan_right":
+            cx = int(max_x * progress)
+
+        cx = max(0, min(cx, max_x))
+        cy = max(0, min(cy, max_y))
+        cropped = img_array[cy : cy + crop_h, cx : cx + crop_w]
+        # Resize to target resolution
+        pil_crop = Image.fromarray(cropped).resize((target_w, target_h), Image.LANCZOS)
+        return np.array(pil_crop)
+
+    from moviepy.video.VideoClip import VideoClip
+    clip = VideoClip(make_frame, duration=duration)
+    clip.fps = fps
+    return clip
+
+
+def _subtitle_clip(
+    text: str,
+    duration: float,
+    resolution: tuple[int, int],
+) -> TextClip | None:
+    """Create a subtitle overlay clip."""
+    target_w, target_h = resolution
+    try:
+        txt = TextClip(
+            text,
+            fontsize=int(target_h * 0.035),
+            color="white",
+            font="Arial",
+            stroke_color="black",
+            stroke_width=2,
+            method="caption",
+            size=(int(target_w * 0.85), None),
+            align="center",
+        )
+        txt = txt.set_duration(duration)
+        txt = txt.set_position(("center", 0.85), relative=True)
+        return txt
+    except Exception as exc:
+        print(f"  Subtitle creation failed (non-fatal): {exc}")
+        return None
+
+
+def _apply_crossfade(clips: list, fade_duration: float = 0.5) -> list:
+    """Offset clips and add crossfade transitions."""
+    if len(clips) < 2 or fade_duration <= 0:
+        return clips
+    faded = []
+    for i, clip in enumerate(clips):
+        c = clip.crossfadein(fade_duration) if i > 0 else clip
+        c = c.crossfadeout(fade_duration) if i < len(clips) - 1 else c
+        faded.append(c)
+    return faded
+
+
+# ---------------------------------------------------------------------------
+# Main pipeline
+# ---------------------------------------------------------------------------
+
 def text_to_video(
     settings: Settings,
     text: str,
     video_format: str = "video",
+    video_style: str = "static",
     on_progress: callable | None = None,
 ) -> Path:
     scenes = _split_into_scenes(text)
@@ -195,8 +313,17 @@ def text_to_video(
                     print(f"  Failed to load video clip for scene {idx + 1}: {exc}")
 
             if img_path and img_path.exists():
-                iclip = ImageClip(str(img_path)).set_duration(target_duration)
-                iclip = _fit_image_clip(iclip, resolution)
+                if video_style == "animated":
+                    iclip = _ken_burns_clip(
+                        str(img_path), target_duration, resolution, fps=settings.fps
+                    )
+                else:
+                    iclip = ImageClip(str(img_path)).set_duration(target_duration)
+                    iclip = _fit_image_clip(iclip, resolution)
+                if video_style == "animated":
+                    sub = _subtitle_clip(scene["narration"], target_duration, resolution)
+                    if sub:
+                        iclip = CompositeVideoClip([iclip, sub])
                 scene_clips.append(iclip)
             else:
                 print(f"  WARNING: No visual content for scene {idx + 1}, using black frame")
@@ -218,7 +345,9 @@ def text_to_video(
 
         # --- Stitch final video ---
         progress("Stitching final video")
-        video = concatenate_videoclips(scene_clips, method="chain")
+        if video_style == "animated" and len(scene_clips) > 1:
+            scene_clips = _apply_crossfade(scene_clips, fade_duration=0.5)
+        video = concatenate_videoclips(scene_clips, method="compose" if video_style == "animated" else "chain")
 
         bgm_audio: AudioFileClip | None = None
         if settings.audio_file.exists():
