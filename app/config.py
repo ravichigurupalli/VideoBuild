@@ -35,6 +35,8 @@ class Settings:
     tts_voice: str | None
     tts_rate: int
     hf_api_token: str | None
+    gemini_api_key: str | None
+    script_provider: str
 
 
 def load_settings(base_dir: Path | None = None) -> Settings:
@@ -76,6 +78,8 @@ def load_settings(base_dir: Path | None = None) -> Settings:
         tts_voice=os.getenv("TTS_VOICE"),
         tts_rate=int(os.getenv("TTS_RATE", "180")),
         hf_api_token=os.getenv("HF_API_TOKEN"),
+        gemini_api_key=os.getenv("GEMINI_API_KEY"),
+        script_provider=os.getenv("SCRIPT_PROVIDER", "gemini").strip().lower(),
     )
 
     print(f"Settings.enable_tts={settings.enable_tts}")

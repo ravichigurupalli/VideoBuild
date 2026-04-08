@@ -101,6 +101,13 @@
           <textarea name="topic" rows="3" placeholder="e.g. What are Hybrid Models? Combining traditional ML with Generative AI for better accuracy."></textarea>
         </label>
         <div class="row">
+          <label>AI Provider
+            <select name="provider">
+              <option value="gemini" {% if defaults.script_provider == 'gemini' %}selected{% endif %}>Google Gemini (free)</option>
+              <option value="huggingface" {% if defaults.script_provider == 'huggingface' %}selected{% endif %}>HuggingFace</option>
+              <option value="ollama" {% if defaults.script_provider == 'ollama' %}selected{% endif %}>Ollama (local)</option>
+            </select>
+          </label>
           <label>Duration
             <select name="duration">
               <option value="30s">30 seconds</option>

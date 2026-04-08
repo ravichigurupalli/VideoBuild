@@ -10,7 +10,7 @@ from flask import Flask, render_template, request, send_file
 
 from .config import load_settings
 from .image_gen import generate_image
-from .script_gen import generate_script, DURATION_OPTIONS
+from .script_gen import generate_script, DURATION_OPTIONS, PROVIDERS
 from .text_to_video import text_to_video
 from .tts import synthesize_to_file
 from .video_builder import build_slideshow, default_title, natural_sort_key
@@ -31,6 +31,7 @@ def index():
             "description": settings.video_description,
             "privacy": settings.video_privacy,
             "video_format": settings.default_video_format,
+            "script_provider": settings.script_provider,
         },
     )
 
@@ -108,12 +109,13 @@ def preview_voice():
 
 @app.post("/generate-script")
 def gen_script():
-    if not settings.hf_api_token:
-        return {"error": "HF_API_TOKEN not set in .env"}, 400
-
     topic = (request.form.get("topic") or "").strip()
     if not topic:
         return {"error": "Topic is required."}, 400
+
+    provider = (request.form.get("provider") or settings.script_provider).strip().lower()
+    if provider not in PROVIDERS:
+        return {"error": f"Invalid provider. Use one of: {', '.join(PROVIDERS)}"}, 400
 
     duration = (request.form.get("duration") or "60s").strip()
     if duration not in DURATION_OPTIONS:
@@ -124,8 +126,15 @@ def gen_script():
         return {"error": "Invalid format. Use video or short."}, 400
 
     try:
-        script = generate_script(topic, settings.hf_api_token, duration_label=duration, video_format=video_format)
-        return {"status": "ok", "script": script}
+        script = generate_script(
+            topic,
+            provider=provider,
+            hf_token=settings.hf_api_token,
+            gemini_api_key=settings.gemini_api_key,
+            duration_label=duration,
+            video_format=video_format,
+        )
+        return {"status": "ok", "script": script, "provider": provider}
     except Exception as exc:
         print(f"Script generation failed: {exc}")
         return {"error": str(exc)}, 500
