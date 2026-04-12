@@ -240,6 +240,8 @@ def text_to_video(
     text: str,
     video_format: str = "video",
     video_style: str = "static",
+    tts_provider: str | None = None,
+    voice_id: str | None = None,
     on_progress: callable | None = None,
 ) -> Path:
     scenes = _split_into_scenes(text)
@@ -340,7 +342,10 @@ def text_to_video(
         voice_path: Path | None = None
         voice_audio: AudioFileClip | None = None
         if settings.enable_tts and full_narration.strip():
-            voice_path = synthesize_to_file(settings, full_narration)
+            voice_path = synthesize_to_file(
+                settings, full_narration,
+                tts_provider=tts_provider, voice_id=voice_id,
+            )
             voice_audio = AudioFileClip(str(voice_path)).volumex(settings.audio_volume)
 
         # --- Stitch final video ---

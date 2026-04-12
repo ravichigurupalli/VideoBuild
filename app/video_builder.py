@@ -55,6 +55,8 @@ def build_slideshow(
     image_paths: Iterable[Path],
     narration: str | None = None,
     video_format: str = "video",
+    tts_provider: str | None = None,
+    voice_id: str | None = None,
 ) -> Path:
     image_list = sorted(
         [p for p in image_paths if p.is_file()],
@@ -67,7 +69,7 @@ def build_slideshow(
     voice_path: Path | None = None
     if settings.enable_tts and narration:
         print(f"TTS enabled, narration length={len(narration)}")
-        voice_path = synthesize_to_file(settings, narration)
+        voice_path = synthesize_to_file(settings, narration, tts_provider=tts_provider, voice_id=voice_id)
         print(f"TTS file: {voice_path}")
     else:
         print("TTS disabled or no narration text")

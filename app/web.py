@@ -12,7 +12,7 @@ from .config import load_settings
 from .image_gen import generate_image
 from .script_gen import generate_script, DURATION_OPTIONS, PROVIDERS
 from .text_to_video import text_to_video, VIDEO_STYLES
-from .tts import synthesize_to_file
+from .tts import synthesize_to_file, fetch_elevenlabs_voices, TTS_PROVIDERS
 from .video_builder import build_slideshow, default_title, natural_sort_key
 from .youtube_client import upload_video
 
@@ -32,6 +32,8 @@ def index():
             "privacy": settings.video_privacy,
             "video_format": settings.default_video_format,
             "script_provider": settings.script_provider,
+            "tts_provider": settings.tts_provider,
+            "elevenlabs_voice_id": settings.elevenlabs_voice_id,
         },
     )
 
@@ -72,8 +74,17 @@ def build():
                 thumbnail_path = tmp_path / thumbnail_name
                 thumbnail_file.save(thumbnail_path)
 
+        tts_provider = (request.form.get("tts_provider") or settings.tts_provider).strip().lower()
+        voice_id = (request.form.get("voice_id") or "").strip() or None
         narration = description if settings.enable_tts else None
-        video_path = build_slideshow(settings, saved_paths, narration=narration, video_format=video_format)
+        try:
+            video_path = build_slideshow(
+                settings, saved_paths, narration=narration, video_format=video_format,
+                tts_provider=tts_provider, voice_id=voice_id,
+            )
+        except Exception as exc:
+            print(f"Build failed: {exc}")
+            return {"error": str(exc)}, 500
         #upload_video(settings, video_path, title, description, thumbnail_path=thumbnail_path)
 
     return {"status": "ok", "title": title, "video_format": video_format}
@@ -88,8 +99,18 @@ def preview_voice():
     if not description or not description.strip():
         return {"error": "Description is required for voice preview."}, 400
 
-    voice_path = synthesize_to_file(settings, description)
+    tts_provider = (request.form.get("tts_provider") or settings.tts_provider).strip().lower()
+    voice_id = (request.form.get("voice_id") or "").strip() or None
+
+    try:
+        voice_path = synthesize_to_file(settings, description, tts_provider=tts_provider, voice_id=voice_id)
+    except Exception as exc:
+        print(f"Preview voice failed: {exc}")
+        return {"error": str(exc)}, 500
+
     audio_bytes = voice_path.read_bytes()
+    mime = "audio/mpeg" if voice_path.suffix == ".mp3" else "audio/wav"
+    ext = voice_path.suffix
 
     try:
         if voice_path.exists():
@@ -101,10 +122,21 @@ def preview_voice():
 
     return send_file(
         io.BytesIO(audio_bytes),
-        mimetype="audio/wav",
+        mimetype=mime,
         as_attachment=False,
-        download_name="voice-preview.wav",
+        download_name=f"voice-preview{ext}",
     )
+
+
+@app.get("/elevenlabs-voices")
+def elevenlabs_voices():
+    if not settings.elevenlabs_api_key:
+        return {"error": "ELEVENLABS_API_KEY not set in .env"}, 400
+    try:
+        voices = fetch_elevenlabs_voices(settings.elevenlabs_api_key)
+        return {"status": "ok", "voices": voices}
+    except Exception as exc:
+        return {"error": str(exc)}, 500
 
 
 @app.post("/generate-script")
@@ -157,8 +189,17 @@ def t2v():
     if video_style not in VIDEO_STYLES:
         return {"error": f"Invalid style. Use one of: {', '.join(VIDEO_STYLES)}"}, 400
 
+    tts_provider = (request.form.get("tts_provider") or settings.tts_provider).strip().lower()
+    voice_id = (request.form.get("voice_id") or "").strip() or None
+
     try:
-        output_path = text_to_video(settings, text, video_format=video_format, video_style=video_style)
+        output_path = text_to_video(
+            settings, text,
+            video_format=video_format,
+            video_style=video_style,
+            tts_provider=tts_provider,
+            voice_id=voice_id,
+        )
         return send_file(
             str(output_path),
             mimetype="video/mp4",

@@ -37,6 +37,10 @@ class Settings:
     hf_api_token: str | None
     gemini_api_key: str | None
     script_provider: str
+    tts_provider: str
+    elevenlabs_api_key: str | None
+    elevenlabs_voice_id: str
+    elevenlabs_model_id: str
 
 
 def load_settings(base_dir: Path | None = None) -> Settings:
@@ -80,6 +84,10 @@ def load_settings(base_dir: Path | None = None) -> Settings:
         hf_api_token=os.getenv("HF_API_TOKEN"),
         gemini_api_key=os.getenv("GEMINI_API_KEY"),
         script_provider=os.getenv("SCRIPT_PROVIDER", "gemini").strip().lower(),
+        tts_provider=os.getenv("TTS_PROVIDER", "pyttsx3").strip().lower(),
+        elevenlabs_api_key=os.getenv("ELEVENLABS_API_KEY"),
+        elevenlabs_voice_id=os.getenv("ELEVENLABS_VOICE_ID", "57WpXhyNwaU0uXgMrmDS"),
+        elevenlabs_model_id=os.getenv("ELEVENLABS_MODEL_ID", "eleven_multilingual_v2"),
     )
 
     print(f"Settings.enable_tts={settings.enable_tts}")
