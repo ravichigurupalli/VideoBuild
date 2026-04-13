@@ -67,6 +67,8 @@ def _synthesize_elevenlabs(
     api_key: str,
     voice_id: str,
     model_id: str = "eleven_multilingual_v2",
+    stability: float = 0.45,
+    similarity_boost: float = 0.80,
 ) -> Path:
     url = f"{ELEVENLABS_TTS_URL}/{voice_id}"
     headers = {
@@ -78,12 +80,12 @@ def _synthesize_elevenlabs(
         "text": text,
         "model_id": model_id,
         "voice_settings": {
-            "stability": 0.5,
-            "similarity_boost": 0.75,
+            "stability": stability,
+            "similarity_boost": similarity_boost,
         },
     }
 
-    print(f"  ElevenLabs TTS: voice={voice_id} model={model_id} chars={len(text)}")
+    print(f"  ElevenLabs TTS: voice={voice_id} model={model_id} stability={stability} similarity={similarity_boost} chars={len(text)}")
     sess = _el_session()
     resp = sess.post(url, json=payload, headers=headers, timeout=120)
 
@@ -141,6 +143,8 @@ def synthesize_to_file(
     text: str,
     tts_provider: str | None = None,
     voice_id: str | None = None,
+    el_stability: float | None = None,
+    el_similarity: float | None = None,
 ) -> Path:
     """Generate narration audio file. Supports pyttsx3 and ElevenLabs."""
     if not text.strip():
@@ -156,9 +160,13 @@ def synthesize_to_file(
             raise RuntimeError("ELEVENLABS_API_KEY not set in .env")
         vid = voice_id or settings.elevenlabs_voice_id
         out_path = tmpdir / "voice.mp3"
+        stab = el_stability if el_stability is not None else settings.elevenlabs_stability
+        sim = el_similarity if el_similarity is not None else settings.elevenlabs_similarity_boost
         try:
             _synthesize_elevenlabs(
-                text, out_path, api_key, vid, settings.elevenlabs_model_id
+                text, out_path, api_key, vid, settings.elevenlabs_model_id,
+                stability=stab,
+                similarity_boost=sim,
             )
         except Exception as exc:
             print(f"  ElevenLabs failed ({exc}), falling back to pyttsx3")

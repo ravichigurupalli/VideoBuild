@@ -33,6 +33,11 @@
     .script-box { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; margin-top: 8px; white-space: pre-wrap; font-size: 14px; line-height: 1.6; min-height: 80px; max-height: 300px; overflow-y: auto; }
     .row { display: flex; gap: 12px; }
     .row > label { flex: 1; }
+    .elevenlabs-settings { display: none; margin-top: 4px; }
+    .slider-row { display: flex; gap: 16px; align-items: center; }
+    .slider-row label { flex: 1; font-size: 13px; }
+    .slider-row input[type="range"] { width: 100%; margin-top: 4px; }
+    .slider-val { font-weight: 400; color: #6b7280; }
   </style>
 </head>
 <body>
@@ -45,12 +50,20 @@
       <label>Description
         <textarea name="description">{{ defaults.description }}</textarea>
       </label>
-      <label>Format
-        <select name="video_format">
-          <option value="video" {% if defaults.video_format == 'video' %}selected{% endif %}>Video (16:9)</option>
-          <option value="short" {% if defaults.video_format == 'short' %}selected{% endif %}>Short (9:16)</option>
-        </select>
-      </label>
+      <div class="row">
+        <label>Format
+          <select name="video_format">
+            <option value="video" {% if defaults.video_format == 'video' %}selected{% endif %}>Video (16:9)</option>
+            <option value="short" {% if defaults.video_format == 'short' %}selected{% endif %}>Short (9:16)</option>
+          </select>
+        </label>
+        <label>Style
+          <select name="video_style">
+            <option value="static">Static (slideshow)</option>
+            <option value="animated" selected>Animated (pan/zoom)</option>
+          </select>
+        </label>
+      </div>
       <label>Images (multiple allowed)
         <input type="file" name="images" multiple accept="image/*" />
       </label>
@@ -69,6 +82,16 @@
             <option value="">Loading voices...</option>
           </select>
         </label>
+      </div>
+      <div class="elevenlabs-settings">
+        <div class="slider-row">
+          <label>Stability (Emotion) <span class="slider-val">45%</span>
+            <input type="range" name="el_stability" min="0" max="100" value="45" class="el-stability-slider">
+          </label>
+          <label>Similarity (Identity) <span class="slider-val">80%</span>
+            <input type="range" name="el_similarity" min="0" max="100" value="80" class="el-similarity-slider">
+          </label>
+        </div>
       </div>
       <div class="actions">
         <button type="button" id="previewBtn" class="secondary">Preview Voice</button>
@@ -156,6 +179,16 @@
             </select>
           </label>
         </div>
+        <div class="elevenlabs-settings">
+          <div class="slider-row">
+            <label>Stability (Emotion) <span class="slider-val">45%</span>
+              <input type="range" name="el_stability" min="0" max="100" value="45" class="el-stability-slider">
+            </label>
+            <label>Similarity (Identity) <span class="slider-val">80%</span>
+              <input type="range" name="el_similarity" min="0" max="100" value="80" class="el-similarity-slider">
+            </label>
+          </div>
+        </div>
         <div class="actions">
           <button type="submit" id="scriptBtn" class="orange">1. Generate Script</button>
         </div>
@@ -205,6 +238,16 @@
             </select>
           </label>
         </div>
+        <div class="elevenlabs-settings">
+          <div class="slider-row">
+            <label>Stability (Emotion) <span class="slider-val">45%</span>
+              <input type="range" name="el_stability" min="0" max="100" value="45" class="el-stability-slider">
+            </label>
+            <label>Similarity (Identity) <span class="slider-val">80%</span>
+              <input type="range" name="el_similarity" min="0" max="100" value="80" class="el-similarity-slider">
+            </label>
+          </div>
+        </div>
         <div class="actions">
           <button type="submit" id="t2vBtn" class="purple">Generate Video</button>
         </div>
@@ -238,6 +281,10 @@
         data.append('description', form.elements.description.value);
         data.append('tts_provider', form.elements.tts_provider.value);
         if (form.elements.voice_id) data.append('voice_id', form.elements.voice_id.value);
+        if (form.elements.tts_provider.value === 'elevenlabs') {
+          data.append('el_stability', (form.elements.el_stability.value / 100).toFixed(2));
+          data.append('el_similarity', (form.elements.el_similarity.value / 100).toFixed(2));
+        }
         const res = await fetch('/preview-voice', { method: 'POST', body: data });
         if (!res.ok) {
           const json = await res.json();
@@ -328,28 +375,41 @@
       }
     }
 
-    // Toggle ElevenLabs voice dropdown visibility
+    // Toggle ElevenLabs voice dropdown + settings sliders visibility
     document.querySelectorAll('.tts-provider-select').forEach(sel => {
-      const voiceLabel = sel.closest('.row').querySelector('.elevenlabs-voice-label') ||
-                         sel.closest('form')?.querySelector('.elevenlabs-voice-label') ||
-                         sel.parentElement.parentElement.querySelector('.elevenlabs-voice-label');
+      const container = sel.closest('form') || sel.closest('.card');
+      const voiceLabel = container.querySelector('.elevenlabs-voice-label');
+      const settingsDiv = container.querySelector('.elevenlabs-settings');
       function toggle() {
-        if (!voiceLabel) return;
-        if (sel.value === 'elevenlabs') {
-          voiceLabel.style.display = '';
+        const isEl = sel.value === 'elevenlabs';
+        if (voiceLabel) voiceLabel.style.display = isEl ? '' : 'none';
+        if (settingsDiv) settingsDiv.style.display = isEl ? 'block' : 'none';
+        if (isEl && voiceLabel) {
           const voiceSel = voiceLabel.querySelector('.elevenlabs-voice-select');
-          if (voiceSel && voiceSel.options.length <= 1 && !elVoicesCache) {
-            loadElevenLabsVoices().then(voices => populateVoiceDropdown(voiceSel, voices));
+          if (voiceSel && voiceSel.options.length <= 1) {
+            if (elVoicesCache) {
+              populateVoiceDropdown(voiceSel, elVoicesCache);
+            } else {
+              loadElevenLabsVoices().then(voices => populateVoiceDropdown(voiceSel, voices));
+            }
           }
-        } else {
-          voiceLabel.style.display = 'none';
         }
       }
       sel.addEventListener('change', toggle);
       toggle();
     });
 
-    async function generateVideoFromText(text, videoFormat, videoStyle, ttsProvider, voiceId, btn) {
+    // Wire up slider value labels
+    document.querySelectorAll('.el-stability-slider').forEach(slider => {
+      const valSpan = slider.parentElement.querySelector('.slider-val');
+      slider.addEventListener('input', () => { valSpan.textContent = slider.value + '%'; });
+    });
+    document.querySelectorAll('.el-similarity-slider').forEach(slider => {
+      const valSpan = slider.parentElement.querySelector('.slider-val');
+      slider.addEventListener('input', () => { valSpan.textContent = slider.value + '%'; });
+    });
+
+    async function generateVideoFromText(text, videoFormat, videoStyle, ttsProvider, voiceId, elStability, elSimilarity, btn) {
       t2vStatus.textContent = 'Generating video... This takes several minutes (AI images + video clips + TTS + stitching).';
       t2vPreview.style.display = 'none';
       btn.disabled = true;
@@ -366,6 +426,10 @@
         data.append('video_style', videoStyle);
         data.append('tts_provider', ttsProvider);
         if (voiceId) data.append('voice_id', voiceId);
+        if (ttsProvider === 'elevenlabs') {
+          data.append('el_stability', (elStability / 100).toFixed(2));
+          data.append('el_similarity', (elSimilarity / 100).toFixed(2));
+        }
         const res = await fetch('/text-to-video', { method: 'POST', body: data });
         if (!res.ok) {
           const json = await res.json();
@@ -426,7 +490,9 @@
       const sty = topicForm.elements.video_style.value;
       const tts = topicForm.elements.tts_provider.value;
       const vid = topicForm.elements.voice_id ? topicForm.elements.voice_id.value : '';
-      generateVideoFromText(text, fmt, sty, tts, vid, scriptToVideoBtn);
+      const stab = topicForm.elements.el_stability ? topicForm.elements.el_stability.value : 45;
+      const sim = topicForm.elements.el_similarity ? topicForm.elements.el_similarity.value : 80;
+      generateVideoFromText(text, fmt, sty, tts, vid, stab, sim, scriptToVideoBtn);
     });
 
     // --- Mode 2: Custom Text ---
@@ -441,7 +507,9 @@
       const sty = t2vForm.elements.video_style.value;
       const tts = t2vForm.elements.tts_provider.value;
       const vid = t2vForm.elements.voice_id ? t2vForm.elements.voice_id.value : '';
-      generateVideoFromText(text, fmt, sty, tts, vid, t2vBtn);
+      const stab = t2vForm.elements.el_stability ? t2vForm.elements.el_stability.value : 45;
+      const sim = t2vForm.elements.el_similarity ? t2vForm.elements.el_similarity.value : 80;
+      generateVideoFromText(text, fmt, sty, tts, vid, stab, sim, t2vBtn);
     });
 
     // --- Image Generation ---

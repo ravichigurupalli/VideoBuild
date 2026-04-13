@@ -41,6 +41,8 @@ class Settings:
     elevenlabs_api_key: str | None
     elevenlabs_voice_id: str
     elevenlabs_model_id: str
+    elevenlabs_stability: float
+    elevenlabs_similarity_boost: float
 
 
 def load_settings(base_dir: Path | None = None) -> Settings:
@@ -88,6 +90,8 @@ def load_settings(base_dir: Path | None = None) -> Settings:
         elevenlabs_api_key=os.getenv("ELEVENLABS_API_KEY"),
         elevenlabs_voice_id=os.getenv("ELEVENLABS_VOICE_ID", "57WpXhyNwaU0uXgMrmDS"),
         elevenlabs_model_id=os.getenv("ELEVENLABS_MODEL_ID", "eleven_multilingual_v2"),
+        elevenlabs_stability=float(os.getenv("ELEVENLABS_STABILITY", "0.45")),
+        elevenlabs_similarity_boost=float(os.getenv("ELEVENLABS_SIMILARITY_BOOST", "0.80")),
     )
 
     print(f"Settings.enable_tts={settings.enable_tts}")

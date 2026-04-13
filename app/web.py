@@ -49,6 +49,7 @@ def build():
     video_format = (request.form.get("video_format") or settings.default_video_format).strip().lower()
     if video_format not in {"video", "short"}:
         return {"error": "Invalid format. Use video or short."}, 400
+    video_style = (request.form.get("video_style") or "static").strip().lower()
     thumbnail_file = request.files.get("thumbnail")
 
     with tempfile.TemporaryDirectory(prefix="videobuild_") as tmpdir:
@@ -76,11 +77,14 @@ def build():
 
         tts_provider = (request.form.get("tts_provider") or settings.tts_provider).strip().lower()
         voice_id = (request.form.get("voice_id") or "").strip() or None
+        el_stability = float(request.form.get("el_stability")) if request.form.get("el_stability") else None
+        el_similarity = float(request.form.get("el_similarity")) if request.form.get("el_similarity") else None
         narration = description if settings.enable_tts else None
         try:
             video_path = build_slideshow(
                 settings, saved_paths, narration=narration, video_format=video_format,
-                tts_provider=tts_provider, voice_id=voice_id,
+                video_style=video_style, tts_provider=tts_provider, voice_id=voice_id,
+                el_stability=el_stability, el_similarity=el_similarity,
             )
         except Exception as exc:
             print(f"Build failed: {exc}")
@@ -101,9 +105,11 @@ def preview_voice():
 
     tts_provider = (request.form.get("tts_provider") or settings.tts_provider).strip().lower()
     voice_id = (request.form.get("voice_id") or "").strip() or None
+    el_stability = float(request.form.get("el_stability")) if request.form.get("el_stability") else None
+    el_similarity = float(request.form.get("el_similarity")) if request.form.get("el_similarity") else None
 
     try:
-        voice_path = synthesize_to_file(settings, description, tts_provider=tts_provider, voice_id=voice_id)
+        voice_path = synthesize_to_file(settings, description, tts_provider=tts_provider, voice_id=voice_id, el_stability=el_stability, el_similarity=el_similarity)
     except Exception as exc:
         print(f"Preview voice failed: {exc}")
         return {"error": str(exc)}, 500
@@ -191,6 +197,8 @@ def t2v():
 
     tts_provider = (request.form.get("tts_provider") or settings.tts_provider).strip().lower()
     voice_id = (request.form.get("voice_id") or "").strip() or None
+    el_stability = float(request.form.get("el_stability")) if request.form.get("el_stability") else None
+    el_similarity = float(request.form.get("el_similarity")) if request.form.get("el_similarity") else None
 
     try:
         output_path = text_to_video(
@@ -199,6 +207,8 @@ def t2v():
             video_style=video_style,
             tts_provider=tts_provider,
             voice_id=voice_id,
+            el_stability=el_stability,
+            el_similarity=el_similarity,
         )
         return send_file(
             str(output_path),

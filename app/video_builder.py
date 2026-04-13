@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import random
 from datetime import date
 from pathlib import Path
 import re
 from typing import Iterable
 
+import numpy as np
 from moviepy.editor import AudioFileClip, CompositeAudioClip, ImageClip, afx, concatenate_videoclips
+from moviepy.video.VideoClip import VideoClip
 
 # Pillow >=10 removed Image.ANTIALIAS; alias it for MoviePy compatibility
 try:  # pragma: no cover - defensive compatibility
@@ -18,6 +21,8 @@ except Exception:
 
 from .config import Settings
 from .tts import synthesize_to_file
+
+VIDEO_STYLES = ("static", "animated")
 
 
 def natural_sort_key(value: str) -> list[int | str]:
@@ -50,13 +55,85 @@ def _resolve_output_resolution(settings: Settings, video_format: str) -> tuple[i
     return (settings.resolution_width, settings.resolution_height)
 
 
+def _ken_burns_clip(
+    img_path: str,
+    duration: float,
+    resolution: tuple[int, int],
+    fps: int = 30,
+) -> VideoClip:
+    """Create a smooth pan/zoom (Ken Burns) clip from a static image."""
+    target_w, target_h = resolution
+    img = Image.open(img_path).convert("RGB")
+
+    canvas_w = int(target_w * 1.3)
+    canvas_h = int(target_h * 1.3)
+    img_ratio = img.width / img.height
+    canvas_ratio = canvas_w / canvas_h
+    if img_ratio > canvas_ratio:
+        img = img.resize((canvas_w, int(canvas_w / img_ratio)), Image.LANCZOS)
+    else:
+        img = img.resize((int(canvas_h * img_ratio), canvas_h), Image.LANCZOS)
+    padded = Image.new("RGB", (canvas_w, canvas_h), (0, 0, 0))
+    padded.paste(img, ((canvas_w - img.width) // 2, (canvas_h - img.height) // 2))
+    img_array = np.array(padded)
+
+    effects = ["zoom_in", "zoom_out", "pan_left", "pan_right"]
+    effect = random.choice(effects)
+
+    def make_frame(t):
+        prog = t / max(duration, 0.01)
+        if effect == "zoom_in":
+            scale = 1.0 + 0.2 * prog
+        elif effect == "zoom_out":
+            scale = 1.2 - 0.2 * prog
+        else:
+            scale = 1.15
+
+        crop_w = int(target_w / scale)
+        crop_h = int(target_h / scale)
+        max_x = canvas_w - crop_w
+        max_y = canvas_h - crop_h
+        cx = max_x // 2
+        cy = max_y // 2
+
+        if effect == "pan_left":
+            cx = int(max_x * (1.0 - prog))
+        elif effect == "pan_right":
+            cx = int(max_x * prog)
+
+        cx = max(0, min(cx, max_x))
+        cy = max(0, min(cy, max_y))
+        cropped = img_array[cy : cy + crop_h, cx : cx + crop_w]
+        pil_crop = Image.fromarray(cropped).resize((target_w, target_h), Image.LANCZOS)
+        return np.array(pil_crop)
+
+    clip = VideoClip(make_frame, duration=duration)
+    clip.fps = fps
+    return clip
+
+
+def _apply_crossfade(clips: list, fade_duration: float = 0.5) -> list:
+    """Add crossfade transitions between clips."""
+    if len(clips) < 2 or fade_duration <= 0:
+        return clips
+    faded = []
+    for i, clip in enumerate(clips):
+        c = clip.crossfadein(fade_duration) if i > 0 else clip
+        c = c.crossfadeout(fade_duration) if i < len(clips) - 1 else c
+        faded.append(c)
+    return faded
+
+
 def build_slideshow(
     settings: Settings,
     image_paths: Iterable[Path],
     narration: str | None = None,
     video_format: str = "video",
+    video_style: str = "static",
     tts_provider: str | None = None,
     voice_id: str | None = None,
+    el_stability: float | None = None,
+    el_similarity: float | None = None,
 ) -> Path:
     image_list = sorted(
         [p for p in image_paths if p.is_file()],
@@ -69,7 +146,7 @@ def build_slideshow(
     voice_path: Path | None = None
     if settings.enable_tts and narration:
         print(f"TTS enabled, narration length={len(narration)}")
-        voice_path = synthesize_to_file(settings, narration, tts_provider=tts_provider, voice_id=voice_id)
+        voice_path = synthesize_to_file(settings, narration, tts_provider=tts_provider, voice_id=voice_id, el_stability=el_stability, el_similarity=el_similarity)
         print(f"TTS file: {voice_path}")
     else:
         print("TTS disabled or no narration text")
@@ -90,15 +167,20 @@ def build_slideshow(
     )
 
     resolution = _resolve_output_resolution(settings, video_format)
-    print(f"Building format={video_format} resolution={resolution[0]}x{resolution[1]}")
+    print(f"Building format={video_format} style={video_style} resolution={resolution[0]}x{resolution[1]}")
     clips = []
     for i, img_path in enumerate(image_list):
         duration = per_image_duration if i < len(image_list) - 1 else max(per_image_duration - 2, 0.1)
-        clip = ImageClip(str(img_path)).set_duration(duration)
-        clip = _fit_image_clip(clip, resolution)
+        if video_style == "animated":
+            clip = _ken_burns_clip(str(img_path), duration, resolution, fps=settings.fps)
+        else:
+            clip = ImageClip(str(img_path)).set_duration(duration)
+            clip = _fit_image_clip(clip, resolution)
         clips.append(clip)
 
-    video = concatenate_videoclips(clips, method="chain")
+    if video_style == "animated" and len(clips) > 1:
+        clips = _apply_crossfade(clips, fade_duration=0.5)
+    video = concatenate_videoclips(clips, method="compose" if video_style == "animated" else "chain")
 
     if settings.audio_file.exists():
         print(f"Using bgm audio: {settings.audio_file}")

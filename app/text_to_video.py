@@ -242,6 +242,8 @@ def text_to_video(
     video_style: str = "static",
     tts_provider: str | None = None,
     voice_id: str | None = None,
+    el_stability: float | None = None,
+    el_similarity: float | None = None,
     on_progress: callable | None = None,
 ) -> Path:
     scenes = _split_into_scenes(text)
@@ -345,6 +347,7 @@ def text_to_video(
             voice_path = synthesize_to_file(
                 settings, full_narration,
                 tts_provider=tts_provider, voice_id=voice_id,
+                el_stability=el_stability, el_similarity=el_similarity,
             )
             voice_audio = AudioFileClip(str(voice_path)).volumex(settings.audio_volume)
 
