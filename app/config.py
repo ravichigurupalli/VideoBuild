@@ -43,6 +43,10 @@ class Settings:
     elevenlabs_model_id: str
     elevenlabs_stability: float
     elevenlabs_similarity_boost: float
+    voice_samples_dir: Path
+    local_tts_model: str
+    local_tts_device: str
+    local_tts_language: str
 
 
 def load_settings(base_dir: Path | None = None) -> Settings:
@@ -92,6 +96,10 @@ def load_settings(base_dir: Path | None = None) -> Settings:
         elevenlabs_model_id=os.getenv("ELEVENLABS_MODEL_ID", "eleven_multilingual_v2"),
         elevenlabs_stability=float(os.getenv("ELEVENLABS_STABILITY", "0.45")),
         elevenlabs_similarity_boost=float(os.getenv("ELEVENLABS_SIMILARITY_BOOST", "0.80")),
+        voice_samples_dir=base / os.getenv("VOICE_SAMPLES_DIR", "voice_samples"),
+        local_tts_model=os.getenv("LOCAL_TTS_MODEL", "tts_models/multilingual/multi-dataset/xtts_v2"),
+        local_tts_device=os.getenv("LOCAL_TTS_DEVICE", "auto"),
+        local_tts_language=os.getenv("LOCAL_TTS_LANGUAGE", "en"),
     )
 
     print(f"Settings.enable_tts={settings.enable_tts}")

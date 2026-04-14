@@ -5,26 +5,148 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Video Builder</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 24px; }
-    .card { max-width: 720px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.06); }
-    label { display: block; margin-top: 12px; font-weight: 600; }
-    input[type="text"], textarea, select { width: 100%; padding: 10px; margin-top: 6px; border: 1px solid #ccc; border-radius: 8px; }
-    textarea { min-height: 90px; }
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; margin: 0; padding: 0; background: #f5f5f7; height: 100vh; display: flex; }
+    
+    /* Sidebar */
+    .sidebar {
+      width: 200px;
+      background: #1e1e1e;
+      padding: 16px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      transition: transform 0.3s ease;
+      position: fixed;
+      left: 0;
+      top: 0;
+      height: 100vh;
+      z-index: 1000;
+    }
+    
+    .sidebar.collapsed {
+      transform: translateX(-100%);
+    }
+    
+    /* Hamburger button (fixed position, shows when sidebar is collapsed) */
+    .hamburger-btn {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      z-index: 1002;
+      background: #1e1e1e;
+      border: none;
+      border-radius: 8px;
+      padding: 10px;
+      cursor: pointer;
+      color: #fff;
+      font-size: 20px;
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .hamburger-btn:hover {
+      background: #2d2d2d;
+    }
+    
+    /* Overlay for mobile */
+    .sidebar-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.5);
+      z-index: 999;
+      display: none;
+    }
+    
+    .sidebar-overlay.active {
+      display: block;
+    }
+    
+    .sidebar-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 16px;
+      margin: 0 8px;
+      border-radius: 8px;
+      cursor: pointer;
+      color: #a1a1aa;
+      font-size: 13px;
+      font-weight: 500;
+      transition: all 0.15s ease;
+    }
+    
+    .sidebar-item:hover {
+      background: #2d2d2d;
+      color: #fff;
+    }
+    
+    .sidebar-item.active {
+      background: #3b82f6;
+      color: #fff;
+    }
+    
+    .sidebar-item .icon {
+      font-size: 18px;
+    }
+    
+    /* Main content */
+    .main-content {
+      flex: 1;
+      padding: 32px;
+      margin-left: 200px;
+      overflow-y: auto;
+      transition: margin-left 0.3s ease;
+    }
+    
+    .main-content.expanded {
+      margin-left: 0;
+    }
+    
+    .card {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 24px;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      display: none;
+    }
+    
+    .card.active {
+      display: block;
+    }
+    
+    .card h2 {
+      margin: 0 0 20px 0;
+      font-size: 20px;
+      font-weight: 600;
+    }
+    
+    label { display: block; margin-top: 12px; font-weight: 600; font-size: 14px; color: #374151; }
+    input[type="text"], textarea, select { width: 100%; padding: 10px; margin-top: 6px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; font-family: inherit; }
+    textarea { min-height: 90px; resize: vertical; }
     input[type="file"] { margin-top: 6px; }
-    button { margin-top: 16px; padding: 12px 18px; border: none; border-radius: 8px; background: #2563eb; color: white; font-weight: 700; cursor: pointer; }
+    button { margin-top: 16px; padding: 12px 18px; border: none; border-radius: 8px; background: #2563eb; color: white; font-weight: 600; cursor: pointer; font-size: 14px; }
     button:disabled { opacity: 0.6; cursor: not-allowed; }
     .actions { display: flex; gap: 12px; flex-wrap: wrap; }
-    .secondary { background: #111827; }
-    .status { margin-top: 12px; font-weight: 600; }
+    .secondary { background: #374151; }
+    .status { margin-top: 12px; font-weight: 600; font-size: 14px; }
     audio { margin-top: 12px; width: 100%; }
-    .card + .card { margin-top: 24px; }
     .img-preview { margin-top: 12px; max-width: 100%; border-radius: 8px; display: none; }
     .green { background: #16a34a; }
     .purple { background: #7c3aed; }
     .orange { background: #ea580c; }
     .video-preview { margin-top: 12px; max-width: 100%; border-radius: 8px; display: none; }
     .mode-tabs { display: flex; gap: 0; margin-top: 12px; }
-    .mode-tab { flex: 1; padding: 10px; text-align: center; font-weight: 700; cursor: pointer; border: 1px solid #ccc; background: #f3f4f6; margin-top: 0; color: #374151; }
+    .mode-tab { flex: 1; padding: 10px; text-align: center; font-weight: 600; cursor: pointer; border: 1px solid #d1d5db; background: #f3f4f6; margin-top: 0; color: #374151; font-size: 13px; }
     .mode-tab:first-child { border-radius: 8px 0 0 8px; }
     .mode-tab:last-child { border-radius: 0 8px 8px 0; }
     .mode-tab.active { background: #7c3aed; color: white; border-color: #7c3aed; }
@@ -38,11 +160,66 @@
     .slider-row label { flex: 1; font-size: 13px; }
     .slider-row input[type="range"] { width: 100%; margin-top: 4px; }
     .slider-val { font-weight: 400; color: #6b7280; }
+    
+    /* Responsive */
+    @media (max-width: 768px) {
+      .sidebar {
+        transform: translateX(-100%);
+      }
+      .sidebar.collapsed {
+        transform: translateX(-100%);
+      }
+      .sidebar:not(.collapsed) {
+        transform: translateX(0);
+      }
+      .main-content {
+        margin-left: 0;
+        padding: 16px;
+      }
+      .main-content.expanded {
+        margin-left: 0;
+      }
+    }
   </style>
 </head>
 <body>
-  <div class="card">
-    <h2>Build & Upload Video</h2>
+  <!-- Sidebar Navigation -->
+  <div class="sidebar">
+    <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 16px 16px 16px">
+      <span style="color:#fff; font-weight:600; font-size:14px">Menu</span>
+      <div style="display:flex; gap:8px">
+        <button id="sidebarCollapseBtn" style="background:none; border:none; color:#a1a1aa; cursor:pointer; font-size:18px; padding:4px; border-radius:4px; line-height:1">◀</button>
+      </div>
+    </div>
+    <div class="sidebar-item active" data-section="build">
+      <span class="icon">🎬</span>
+      <span>Build & Upload</span>
+    </div>
+    <div class="sidebar-item" data-section="image">
+      <span class="icon">🖼️</span>
+      <span>Generate Image</span>
+    </div>
+    <div class="sidebar-item" data-section="text-video">
+      <span class="icon">🎥</span>
+      <span>Text to Video</span>
+    </div>
+    <div class="sidebar-item" data-section="tts">
+      <span class="icon">🎙️</span>
+      <span>Self-Hosted TTS</span>
+    </div>
+  </div>
+
+  <!-- Hamburger button (outside sidebar, shows when collapsed) -->
+  <button id="hamburgerBtn" class="hamburger-btn" style="display:none">☰</button>
+  
+  <!-- Overlay for mobile -->
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+  <!-- Main Content Area -->
+  <div class="main-content">
+    <!-- Build & Upload Card -->
+    <div class="card active" id="build-section">
+      <h2>Build & Upload Video</h2>
     <form id="form">
       <label>Title
         <input type="text" name="title" value="{{ defaults.title }}" />
@@ -75,11 +252,23 @@
           <select name="tts_provider" class="tts-provider-select">
             <option value="pyttsx3" {% if defaults.tts_provider == 'pyttsx3' %}selected{% endif %}>System Voice (pyttsx3)</option>
             <option value="elevenlabs" {% if defaults.tts_provider == 'elevenlabs' %}selected{% endif %}>ElevenLabs</option>
+            <option value="edge_tts">Edge-TTS (Free)</option>
+            <option value="xtts">XTTS v2 (Voice Clone)</option>
           </select>
         </label>
         <label class="elevenlabs-voice-label" style="display:none">ElevenLabs Voice
           <select name="voice_id" class="elevenlabs-voice-select">
             <option value="">Loading voices...</option>
+          </select>
+        </label>
+        <label class="edge-voice-label" style="display:none">Edge-TTS Voice
+          <select name="edge_voice" class="edge-voice-select" style="min-width:200px">
+            <option value="">Loading...</option>
+          </select>
+        </label>
+        <label class="xtts-voice-label" style="display:none">Voice Sample
+          <select name="speaker_wav" class="xtts-voice-select">
+            <option value="">-- upload in Self-Hosted TTS card --</option>
           </select>
         </label>
       </div>
@@ -93,6 +282,18 @@
           </label>
         </div>
       </div>
+      <div class="edge-tts-settings" style="display:none">
+        <div class="row">
+          <label>Rate <select name="edge_rate" class="edge-rate-select">
+            <option value="-50%">Very Slow</option><option value="-25%">Slow</option>
+            <option value="+0%" selected>Normal</option><option value="+25%">Fast</option><option value="+50%">Very Fast</option>
+          </select></label>
+          <label>Pitch <select name="edge_pitch" class="edge-pitch-select">
+            <option value="-50Hz">Very Low</option><option value="-25Hz">Low</option>
+            <option value="+0Hz" selected>Normal</option><option value="+25Hz">High</option><option value="+50Hz">Very High</option>
+          </select></label>
+        </div>
+      </div>
       <div class="actions">
         <button type="button" id="previewBtn" class="secondary">Preview Voice</button>
         <button type="submit" id="buildBtn">Start</button>
@@ -100,10 +301,11 @@
       <div id="status" class="status"></div>
       <audio id="previewAudio" controls hidden></audio>
     </form>
-  </div>
+    </div>
 
-  <div class="card">
-    <h2>Generate Image from Text</h2>
+    <!-- Generate Image Card -->
+    <div class="card" id="image-section">
+      <h2>Generate Image from Text</h2>
     <form id="imgForm">
       <label>Prompt
         <textarea name="prompt" placeholder="A cinematic sunset over a mountain lake, vibrant colors, 4K"></textarea>
@@ -120,10 +322,11 @@
       <div id="imgStatus" class="status"></div>
       <img id="imgPreview" class="img-preview" alt="Generated image" />
     </form>
-  </div>
+    </div>
 
-  <div class="card">
-    <h2>Text to Video (AI Generated)</h2>
+    <!-- Text to Video Card -->
+    <div class="card" id="text-video-section">
+      <h2>Text to Video (AI Generated)</h2>
 
     <div class="mode-tabs">
       <button type="button" class="mode-tab active" data-mode="topic">Generate Script from Topic</button>
@@ -171,11 +374,23 @@
             <select name="tts_provider" class="tts-provider-select">
               <option value="pyttsx3" {% if defaults.tts_provider == 'pyttsx3' %}selected{% endif %}>System Voice (pyttsx3)</option>
               <option value="elevenlabs" {% if defaults.tts_provider == 'elevenlabs' %}selected{% endif %}>ElevenLabs</option>
+              <option value="edge_tts">Edge-TTS (Free)</option>
+              <option value="xtts">XTTS v2 (Voice Clone)</option>
             </select>
           </label>
           <label class="elevenlabs-voice-label" style="display:none">ElevenLabs Voice
             <select name="voice_id" class="elevenlabs-voice-select">
               <option value="">Loading voices...</option>
+            </select>
+          </label>
+          <label class="edge-voice-label" style="display:none">Edge-TTS Voice
+            <select name="edge_voice" class="edge-voice-select" style="min-width:200px">
+              <option value="">Loading...</option>
+            </select>
+          </label>
+          <label class="xtts-voice-label" style="display:none">Voice Sample
+            <select name="speaker_wav" class="xtts-voice-select">
+              <option value="">-- upload in Self-Hosted TTS card --</option>
             </select>
           </label>
         </div>
@@ -187,6 +402,18 @@
             <label>Similarity (Identity) <span class="slider-val">80%</span>
               <input type="range" name="el_similarity" min="0" max="100" value="80" class="el-similarity-slider">
             </label>
+          </div>
+        </div>
+        <div class="edge-tts-settings" style="display:none">
+          <div class="row">
+            <label>Rate <select name="edge_rate" class="edge-rate-select">
+              <option value="-50%">Very Slow</option><option value="-25%">Slow</option>
+              <option value="+0%" selected>Normal</option><option value="+25%">Fast</option><option value="+50%">Very Fast</option>
+            </select></label>
+            <label>Pitch <select name="edge_pitch" class="edge-pitch-select">
+              <option value="-50Hz">Very Low</option><option value="-25Hz">Low</option>
+              <option value="+0Hz" selected>Normal</option><option value="+25Hz">High</option><option value="+50Hz">Very High</option>
+            </select></label>
           </div>
         </div>
         <div class="actions">
@@ -230,11 +457,23 @@
             <select name="tts_provider" class="tts-provider-select">
               <option value="pyttsx3" {% if defaults.tts_provider == 'pyttsx3' %}selected{% endif %}>System Voice (pyttsx3)</option>
               <option value="elevenlabs" {% if defaults.tts_provider == 'elevenlabs' %}selected{% endif %}>ElevenLabs</option>
+              <option value="edge_tts">Edge-TTS (Free)</option>
+              <option value="xtts">XTTS v2 (Voice Clone)</option>
             </select>
           </label>
           <label class="elevenlabs-voice-label" style="display:none">ElevenLabs Voice
             <select name="voice_id" class="elevenlabs-voice-select">
               <option value="">Loading voices...</option>
+            </select>
+          </label>
+          <label class="edge-voice-label" style="display:none">Edge-TTS Voice
+            <select name="edge_voice" class="edge-voice-select" style="min-width:200px">
+              <option value="">Loading...</option>
+            </select>
+          </label>
+          <label class="xtts-voice-label" style="display:none">Voice Sample
+            <select name="speaker_wav" class="xtts-voice-select">
+              <option value="">-- upload in Self-Hosted TTS card --</option>
             </select>
           </label>
         </div>
@@ -248,6 +487,18 @@
             </label>
           </div>
         </div>
+        <div class="edge-tts-settings" style="display:none">
+          <div class="row">
+            <label>Rate <select name="edge_rate" class="edge-rate-select">
+              <option value="-50%">Very Slow</option><option value="-25%">Slow</option>
+              <option value="+0%" selected>Normal</option><option value="+25%">Fast</option><option value="+50%">Very Fast</option>
+            </select></label>
+            <label>Pitch <select name="edge_pitch" class="edge-pitch-select">
+              <option value="-50Hz">Very Low</option><option value="-25Hz">Low</option>
+              <option value="+0Hz" selected>Normal</option><option value="+25Hz">High</option><option value="+50Hz">Very High</option>
+            </select></label>
+          </div>
+        </div>
         <div class="actions">
           <button type="submit" id="t2vBtn" class="purple">Generate Video</button>
         </div>
@@ -256,9 +507,207 @@
 
     <div id="t2vStatus" class="status"></div>
     <video id="t2vPreview" class="video-preview" controls></video>
+    </div>
+
+    <!-- Self-Hosted TTS Card -->
+    <div class="card" id="tts-section">
+      <h2>Self-Hosted TTS</h2>
+    <p style="font-size:13px; color:#6b7280; margin-top:0">Free text-to-speech: <b>Edge-TTS</b> (Microsoft, 400+ voices) or <b>XTTS v2</b> (local voice cloning).</p>
+
+    <div id="localTtsStatus" class="status" style="margin-bottom:8px"></div>
+
+    <!-- Backend selector -->
+    <div class="row" style="margin-bottom:8px">
+      <label>TTS Backend
+        <select id="localBackendSelect">
+          <option value="edge" selected>Edge-TTS (Microsoft Free)</option>
+          <option value="xtts">XTTS v2 (Local Voice Clone)</option>
+        </select>
+      </label>
+    </div>
+
+    <!-- Edge-TTS panel -->
+    <div id="edgeTtsPanel">
+      <div class="row">
+        <label>Voice
+          <select id="edgeVoiceSelect" style="min-width:260px">
+            <option value="">Loading voices...</option>
+          </select>
+        </label>
+        <label>Filter
+          <input type="text" id="edgeVoiceFilter" placeholder="e.g. en-US, Female" style="max-width:160px" />
+        </label>
+      </div>
+      <div class="row">
+        <label>Rate
+          <select id="edgeRate">
+            <option value="-50%">Very Slow</option>
+            <option value="-25%">Slow</option>
+            <option value="+0%" selected>Normal</option>
+            <option value="+25%">Fast</option>
+            <option value="+50%">Very Fast</option>
+          </select>
+        </label>
+        <label>Pitch
+          <select id="edgePitch">
+            <option value="-50Hz">Very Low</option>
+            <option value="-25Hz">Low</option>
+            <option value="+0Hz" selected>Normal</option>
+            <option value="+25Hz">High</option>
+            <option value="+50Hz">Very High</option>
+          </select>
+        </label>
+      </div>
+    </div>
+
+    <!-- XTTS panel -->
+    <div id="xttsTtsPanel" style="display:none">
+      <fieldset style="border:1px solid #e5e7eb; border-radius:8px; padding:12px; margin-bottom:12px">
+        <legend style="font-weight:700; font-size:14px; padding:0 6px">Voice Samples</legend>
+
+        <!-- Tab toggle: Upload vs Record -->
+        <div style="display:flex; gap:4px; margin-bottom:10px">
+          <button type="button" class="voice-input-tab active" data-tab="upload" style="flex:1; padding:6px 0; border:1px solid #d1d5db; border-radius:6px; cursor:pointer; font-size:13px; font-weight:600; background:#6366f1; color:#fff">Upload File</button>
+          <button type="button" class="voice-input-tab" data-tab="record" style="flex:1; padding:6px 0; border:1px solid #d1d5db; border-radius:6px; cursor:pointer; font-size:13px; font-weight:600; background:#f3f4f6; color:#374151">Record Mic</button>
+        </div>
+
+        <!-- Upload panel -->
+        <div id="voiceUploadPanel">
+          <div class="row">
+            <label>Upload Voice Sample (5-30s recording)
+              <input type="file" id="voiceFileInput" accept=".wav,.mp3,.ogg,.flac,.m4a,.webm" />
+            </label>
+            <label>Voice Name (optional)
+              <input type="text" id="voiceNameInput" placeholder="e.g. My Voice" />
+            </label>
+          </div>
+          <div class="actions" style="margin-top:8px">
+            <button type="button" id="uploadVoiceBtn" class="green">Upload Voice Sample</button>
+          </div>
+        </div>
+
+        <!-- Record panel -->
+        <div id="voiceRecordPanel" style="display:none">
+          <div class="row">
+            <label>Voice Name (optional)
+              <input type="text" id="recordVoiceNameInput" placeholder="e.g. My Voice" />
+            </label>
+          </div>
+          <div style="display:flex; align-items:center; gap:12px; margin-top:8px">
+            <button type="button" id="recordBtn" style="padding:8px 18px; border:none; border-radius:8px; cursor:pointer; font-weight:700; font-size:14px; background:#dc2626; color:#fff; display:flex; align-items:center; gap:6px">
+              <span id="recordIcon" style="width:12px; height:12px; border-radius:50%; background:#fff; display:inline-block"></span>
+              <span id="recordLabel">Start Recording</span>
+            </button>
+            <span id="recordTimer" style="font-size:14px; font-weight:600; color:#6b7280; min-width:48px">0:00</span>
+            <canvas id="recordVisualizer" width="140" height="36" style="border:1px solid #e5e7eb; border-radius:6px; background:#f9fafb"></canvas>
+          </div>
+          <p style="font-size:12px; color:#6b7280; margin:6px 0 0 0">Record 5-30 seconds of your voice. Speak clearly in a quiet environment.</p>
+          <audio id="recordPreview" controls hidden style="margin-top:8px; width:100%"></audio>
+          <div class="actions" style="margin-top:8px">
+            <button type="button" id="saveRecordingBtn" class="green" disabled>Save Recording as Voice Sample</button>
+          </div>
+        </div>
+
+        <div style="margin-top:10px">
+          <label>Select Voice Sample
+            <select id="localVoiceSelect">
+              <option value="">-- No voices loaded --</option>
+            </select>
+          </label>
+          <button type="button" id="deleteVoiceBtn" class="secondary" style="margin-top:6px; padding:6px 12px; font-size:12px; background:#dc2626">Delete Selected</button>
+        </div>
+      </fieldset>
+      <div class="row">
+        <label>Language
+          <select id="localTtsLang">
+            <option value="en" selected>English</option>
+            <option value="es">Spanish</option>
+            <option value="fr">French</option>
+            <option value="de">German</option>
+            <option value="it">Italian</option>
+            <option value="pt">Portuguese</option>
+            <option value="pl">Polish</option>
+            <option value="tr">Turkish</option>
+            <option value="ru">Russian</option>
+            <option value="nl">Dutch</option>
+            <option value="cs">Czech</option>
+            <option value="ar">Arabic</option>
+            <option value="zh-cn">Chinese</option>
+            <option value="ja">Japanese</option>
+            <option value="ko">Korean</option>
+            <option value="hi">Hindi</option>
+          </select>
+        </label>
+      </div>
+    </div>
+
+    <!-- Shared: Text + Generate -->
+    <label>Text to Speak
+      <textarea id="localTtsText" rows="4" placeholder="Type or paste the text you want to convert to speech..."></textarea>
+    </label>
+    <div class="actions">
+      <button type="button" id="localTtsBtn" class="purple">Generate Speech</button>
+    </div>
+    <div id="localTtsGenStatus" class="status"></div>
+    <audio id="localTtsAudio" controls hidden style="margin-top:12px; width:100%"></audio>
+    </div>
   </div>
 
   <script>
+    // Hamburger button toggle
+    const hamburgerBtn = document.getElementById('hamburgerBtn');
+    const sidebar = document.querySelector('.sidebar');
+    const mainContent = document.querySelector('.main-content');
+    const sidebarOverlay = document.getElementById('sidebarOverlay');
+    const sidebarCollapseBtn = document.getElementById('sidebarCollapseBtn');
+    
+    function toggleSidebar() {
+      const isCollapsed = sidebar.classList.toggle('collapsed');
+      mainContent.classList.toggle('expanded');
+      sidebarOverlay.classList.toggle('active');
+      
+      // Show/hide hamburger button
+      hamburgerBtn.style.display = isCollapsed ? 'flex' : 'none';
+    }
+    
+    hamburgerBtn.addEventListener('click', toggleSidebar);
+    sidebarCollapseBtn.addEventListener('click', toggleSidebar);
+    sidebarOverlay.addEventListener('click', toggleSidebar);
+    
+    // Initialize sidebar state based on screen size
+    if (window.innerWidth < 768) {
+      sidebar.classList.add('collapsed');
+      mainContent.classList.add('expanded');
+      hamburgerBtn.style.display = 'flex';
+    } else {
+      hamburgerBtn.style.display = 'none';
+    }
+    
+    // Sidebar Navigation
+    const sidebarItems = document.querySelectorAll('.sidebar-item');
+    const cards = document.querySelectorAll('.card');
+
+    sidebarItems.forEach(item => {
+      item.addEventListener('click', () => {
+        const section = item.dataset.section;
+        
+        // Update sidebar active state
+        sidebarItems.forEach(si => si.classList.remove('active'));
+        item.classList.add('active');
+        
+        // Show corresponding card
+        cards.forEach(card => card.classList.remove('active'));
+        document.getElementById(`${section}-section`).classList.add('active');
+        
+        // Auto-collapse sidebar on mobile after selection
+        if (window.innerWidth < 768) {
+          sidebar.classList.add('collapsed');
+          mainContent.classList.add('expanded');
+          sidebarOverlay.classList.remove('active');
+        }
+      });
+    });
+
     const form = document.getElementById('form');
     const statusEl = document.getElementById('status');
     const previewBtn = document.getElementById('previewBtn');
@@ -279,11 +728,20 @@
       try {
         const data = new FormData();
         data.append('description', form.elements.description.value);
-        data.append('tts_provider', form.elements.tts_provider.value);
+        const pvProvider = form.elements.tts_provider.value;
+        data.append('tts_provider', pvProvider);
         if (form.elements.voice_id) data.append('voice_id', form.elements.voice_id.value);
-        if (form.elements.tts_provider.value === 'elevenlabs') {
+        if (pvProvider === 'elevenlabs') {
           data.append('el_stability', (form.elements.el_stability.value / 100).toFixed(2));
           data.append('el_similarity', (form.elements.el_similarity.value / 100).toFixed(2));
+        }
+        if (pvProvider === 'edge_tts') {
+          if (form.elements.edge_voice) data.append('edge_voice', form.elements.edge_voice.value);
+          if (form.elements.edge_rate) data.append('edge_rate', form.elements.edge_rate.value);
+          if (form.elements.edge_pitch) data.append('edge_pitch', form.elements.edge_pitch.value);
+        }
+        if (pvProvider === 'xtts') {
+          if (form.elements.speaker_wav) data.append('speaker_wav', form.elements.speaker_wav.value);
         }
         const res = await fetch('/preview-voice', { method: 'POST', body: data });
         if (!res.ok) {
@@ -375,17 +833,84 @@
       }
     }
 
-    // Toggle ElevenLabs voice dropdown + settings sliders visibility
+    // --- Edge-TTS + XTTS voice caches for Build/T2V cards ---
+    let edgeVoicesCacheBuild = null;
+    let xttsVoicesCacheBuild = null;
+
+    async function loadEdgeVoicesForDropdowns() {
+      if (edgeVoicesCacheBuild) return edgeVoicesCacheBuild;
+      try {
+        const res = await fetch('/local-tts/edge-voices');
+        const json = await res.json();
+        if (json.voices) { edgeVoicesCacheBuild = json.voices; return json.voices; }
+      } catch (err) { console.error('Edge voices load failed:', err); }
+      return [];
+    }
+
+    async function loadXttsVoicesForDropdowns() {
+      if (xttsVoicesCacheBuild) return xttsVoicesCacheBuild;
+      try {
+        const res = await fetch('/local-tts/voices');
+        const json = await res.json();
+        if (json.voices) { xttsVoicesCacheBuild = json.voices; return json.voices; }
+      } catch (err) { console.error('XTTS voices load failed:', err); }
+      return [];
+    }
+
+    function populateEdgeDropdown(selectEl, voices) {
+      selectEl.innerHTML = '';
+      if (!voices.length) { selectEl.innerHTML = '<option value="">No voices</option>'; return; }
+      voices.forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v.short_name;
+        opt.textContent = `${v.short_name} — ${v.gender}`;
+        if (v.short_name === 'en-US-GuyNeural') opt.selected = true;
+        selectEl.appendChild(opt);
+      });
+    }
+
+    function populateXttsDropdown(selectEl, voices) {
+      selectEl.innerHTML = '';
+      if (!voices.length) { selectEl.innerHTML = '<option value="">-- upload in Self-Hosted TTS card --</option>'; return; }
+      voices.forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v.filename;
+        opt.textContent = `${v.name} (${v.size_kb} KB)`;
+        selectEl.appendChild(opt);
+      });
+    }
+
+    async function refreshAllXttsDropdowns() {
+      xttsVoicesCacheBuild = null;
+      const voices = await loadXttsVoicesForDropdowns();
+      document.querySelectorAll('.xtts-voice-select').forEach(sel => {
+        populateXttsDropdown(sel, voices);
+      });
+    }
+
+    // Toggle provider-specific UI for all TTS provider selects
     document.querySelectorAll('.tts-provider-select').forEach(sel => {
       const container = sel.closest('form') || sel.closest('.card');
-      const voiceLabel = container.querySelector('.elevenlabs-voice-label');
-      const settingsDiv = container.querySelector('.elevenlabs-settings');
+      const elVoiceLabel = container.querySelector('.elevenlabs-voice-label');
+      const elSettingsDiv = container.querySelector('.elevenlabs-settings');
+      const edgeVoiceLabel = container.querySelector('.edge-voice-label');
+      const edgeSettingsDiv = container.querySelector('.edge-tts-settings');
+      const xttsVoiceLabel = container.querySelector('.xtts-voice-label');
+
       function toggle() {
-        const isEl = sel.value === 'elevenlabs';
-        if (voiceLabel) voiceLabel.style.display = isEl ? '' : 'none';
-        if (settingsDiv) settingsDiv.style.display = isEl ? 'block' : 'none';
-        if (isEl && voiceLabel) {
-          const voiceSel = voiceLabel.querySelector('.elevenlabs-voice-select');
+        const val = sel.value;
+        // ElevenLabs
+        if (elVoiceLabel) elVoiceLabel.style.display = val === 'elevenlabs' ? '' : 'none';
+        if (elSettingsDiv) elSettingsDiv.style.display = val === 'elevenlabs' ? 'block' : 'none';
+        // Edge-TTS
+        if (edgeVoiceLabel) edgeVoiceLabel.style.display = val === 'edge_tts' ? '' : 'none';
+        if (edgeSettingsDiv) edgeSettingsDiv.style.display = val === 'edge_tts' ? 'block' : 'none';
+        // XTTS
+        if (xttsVoiceLabel) xttsVoiceLabel.style.display = val === 'xtts' ? '' : 'none';
+
+        // Lazy-load ElevenLabs voices
+        if (val === 'elevenlabs' && elVoiceLabel) {
+          const voiceSel = elVoiceLabel.querySelector('.elevenlabs-voice-select');
           if (voiceSel && voiceSel.options.length <= 1) {
             if (elVoicesCache) {
               populateVoiceDropdown(voiceSel, elVoicesCache);
@@ -393,6 +918,18 @@
               loadElevenLabsVoices().then(voices => populateVoiceDropdown(voiceSel, voices));
             }
           }
+        }
+        // Lazy-load Edge-TTS voices
+        if (val === 'edge_tts' && edgeVoiceLabel) {
+          const edgeSel = edgeVoiceLabel.querySelector('.edge-voice-select');
+          if (edgeSel && edgeSel.options.length <= 1) {
+            loadEdgeVoicesForDropdowns().then(voices => populateEdgeDropdown(edgeSel, voices));
+          }
+        }
+        // Lazy-load XTTS voice samples
+        if (val === 'xtts' && xttsVoiceLabel) {
+          const xttsSel = xttsVoiceLabel.querySelector('.xtts-voice-select');
+          loadXttsVoicesForDropdowns().then(voices => populateXttsDropdown(xttsSel, voices));
         }
       }
       sel.addEventListener('change', toggle);
@@ -409,7 +946,7 @@
       slider.addEventListener('input', () => { valSpan.textContent = slider.value + '%'; });
     });
 
-    async function generateVideoFromText(text, videoFormat, videoStyle, ttsProvider, voiceId, elStability, elSimilarity, btn) {
+    async function generateVideoFromText(text, videoFormat, videoStyle, ttsProvider, voiceId, elStability, elSimilarity, edgeVoice, edgeRate, edgePitch, speakerWav, btn) {
       t2vStatus.textContent = 'Generating video... This takes several minutes (AI images + video clips + TTS + stitching).';
       t2vPreview.style.display = 'none';
       btn.disabled = true;
@@ -429,6 +966,14 @@
         if (ttsProvider === 'elevenlabs') {
           data.append('el_stability', (elStability / 100).toFixed(2));
           data.append('el_similarity', (elSimilarity / 100).toFixed(2));
+        }
+        if (ttsProvider === 'edge_tts') {
+          if (edgeVoice) data.append('edge_voice', edgeVoice);
+          if (edgeRate) data.append('edge_rate', edgeRate);
+          if (edgePitch) data.append('edge_pitch', edgePitch);
+        }
+        if (ttsProvider === 'xtts' && speakerWav) {
+          data.append('speaker_wav', speakerWav);
         }
         const res = await fetch('/text-to-video', { method: 'POST', body: data });
         if (!res.ok) {
@@ -483,6 +1028,15 @@
       }
     });
 
+    function _getTtsExtras(formEl) {
+      return {
+        edgeVoice: formEl.elements.edge_voice ? formEl.elements.edge_voice.value : '',
+        edgeRate: formEl.elements.edge_rate ? formEl.elements.edge_rate.value : '+0%',
+        edgePitch: formEl.elements.edge_pitch ? formEl.elements.edge_pitch.value : '+0Hz',
+        speakerWav: formEl.elements.speaker_wav ? formEl.elements.speaker_wav.value : '',
+      };
+    }
+
     scriptToVideoBtn.addEventListener('click', () => {
       const text = scriptEdit.value.trim();
       if (!text) { t2vStatus.textContent = 'Error: Script is empty.'; return; }
@@ -492,7 +1046,8 @@
       const vid = topicForm.elements.voice_id ? topicForm.elements.voice_id.value : '';
       const stab = topicForm.elements.el_stability ? topicForm.elements.el_stability.value : 45;
       const sim = topicForm.elements.el_similarity ? topicForm.elements.el_similarity.value : 80;
-      generateVideoFromText(text, fmt, sty, tts, vid, stab, sim, scriptToVideoBtn);
+      const extras = _getTtsExtras(topicForm);
+      generateVideoFromText(text, fmt, sty, tts, vid, stab, sim, extras.edgeVoice, extras.edgeRate, extras.edgePitch, extras.speakerWav, scriptToVideoBtn);
     });
 
     // --- Mode 2: Custom Text ---
@@ -509,7 +1064,8 @@
       const vid = t2vForm.elements.voice_id ? t2vForm.elements.voice_id.value : '';
       const stab = t2vForm.elements.el_stability ? t2vForm.elements.el_stability.value : 45;
       const sim = t2vForm.elements.el_similarity ? t2vForm.elements.el_similarity.value : 80;
-      generateVideoFromText(text, fmt, sty, tts, vid, stab, sim, t2vBtn);
+      const extras = _getTtsExtras(t2vForm);
+      generateVideoFromText(text, fmt, sty, tts, vid, stab, sim, extras.edgeVoice, extras.edgeRate, extras.edgePitch, extras.speakerWav, t2vBtn);
     });
 
     // --- Image Generation ---
@@ -547,6 +1103,384 @@
         imgStatus.textContent = 'Error: ' + err.message;
       } finally {
         genBtn.disabled = false;
+      }
+    });
+
+    // --- Self-Hosted TTS ---
+    const localTtsStatus = document.getElementById('localTtsStatus');
+    const localTtsGenStatus = document.getElementById('localTtsGenStatus');
+    const localTtsAudio = document.getElementById('localTtsAudio');
+    const localVoiceSelect = document.getElementById('localVoiceSelect');
+    const uploadVoiceBtn = document.getElementById('uploadVoiceBtn');
+    const deleteVoiceBtn = document.getElementById('deleteVoiceBtn');
+    const localTtsBtn = document.getElementById('localTtsBtn');
+    const localBackendSelect = document.getElementById('localBackendSelect');
+    const edgeTtsPanel = document.getElementById('edgeTtsPanel');
+    const xttsTtsPanel = document.getElementById('xttsTtsPanel');
+    const edgeVoiceSelect = document.getElementById('edgeVoiceSelect');
+    const edgeVoiceFilter = document.getElementById('edgeVoiceFilter');
+
+    let edgeVoicesAll = [];
+
+    // Toggle backend panels
+    localBackendSelect.addEventListener('change', () => {
+      const isEdge = localBackendSelect.value === 'edge';
+      edgeTtsPanel.style.display = isEdge ? '' : 'none';
+      xttsTtsPanel.style.display = isEdge ? 'none' : 'block';
+    });
+
+    // Check backend status
+    fetch('/local-tts/status').then(r => r.json()).then(json => {
+      const parts = [];
+      if (json.backends?.edge) parts.push('Edge-TTS ✓');
+      if (json.backends?.xtts) parts.push('XTTS v2 ✓');
+      if (!json.available) {
+        localTtsStatus.textContent = '⚠ No TTS backend installed. Run: pip install edge-tts';
+        localTtsStatus.style.color = '#dc2626';
+      } else {
+        localTtsStatus.textContent = 'Backends: ' + parts.join(' | ');
+        localTtsStatus.style.color = '#16a34a';
+      }
+      // Hide XTTS option if not installed
+      if (!json.backends?.xtts) {
+        localBackendSelect.querySelector('option[value="xtts"]').disabled = true;
+        localBackendSelect.querySelector('option[value="xtts"]').textContent += ' (not installed)';
+      }
+    }).catch(() => {});
+
+    // --- Edge-TTS voice loading ---
+    function populateEdgeVoices(voices, filter) {
+      edgeVoiceSelect.innerHTML = '';
+      const q = (filter || '').toLowerCase();
+      const filtered = q ? voices.filter(v =>
+        v.name.toLowerCase().includes(q) ||
+        v.short_name.toLowerCase().includes(q) ||
+        v.gender.toLowerCase().includes(q) ||
+        v.locale.toLowerCase().includes(q)
+      ) : voices;
+      if (!filtered.length) {
+        edgeVoiceSelect.innerHTML = '<option value="">No voices match filter</option>';
+        return;
+      }
+      filtered.forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v.short_name;
+        opt.textContent = `${v.short_name} — ${v.gender}`;
+        if (v.short_name === 'en-US-GuyNeural') opt.selected = true;
+        edgeVoiceSelect.appendChild(opt);
+      });
+    }
+
+    fetch('/local-tts/edge-voices').then(r => r.json()).then(json => {
+      if (json.voices) {
+        edgeVoicesAll = json.voices;
+        populateEdgeVoices(edgeVoicesAll, '');
+      }
+    }).catch(err => console.error('Edge voices load failed:', err));
+
+    edgeVoiceFilter.addEventListener('input', () => {
+      populateEdgeVoices(edgeVoicesAll, edgeVoiceFilter.value);
+    });
+
+    // --- XTTS voice sample management ---
+    async function loadLocalVoices() {
+      try {
+        const res = await fetch('/local-tts/voices');
+        const json = await res.json();
+        localVoiceSelect.innerHTML = '';
+        if (!json.voices || json.voices.length === 0) {
+          localVoiceSelect.innerHTML = '<option value="">-- No voice samples yet --</option>';
+          return;
+        }
+        json.voices.forEach(v => {
+          const opt = document.createElement('option');
+          opt.value = v.filename;
+          opt.textContent = `${v.name} (${v.size_kb} KB)`;
+          localVoiceSelect.appendChild(opt);
+        });
+      } catch (err) {
+        console.error('Failed to load local voices:', err);
+      }
+    }
+    loadLocalVoices();
+
+    uploadVoiceBtn.addEventListener('click', async () => {
+      const fileInput = document.getElementById('voiceFileInput');
+      const nameInput = document.getElementById('voiceNameInput');
+      if (!fileInput.files.length) {
+        localTtsGenStatus.textContent = 'Error: Select a voice file to upload.';
+        return;
+      }
+      uploadVoiceBtn.disabled = true;
+      localTtsGenStatus.textContent = 'Uploading voice sample...';
+      try {
+        const data = new FormData();
+        data.append('voice_file', fileInput.files[0]);
+        if (nameInput.value.trim()) data.append('voice_name', nameInput.value.trim());
+        const res = await fetch('/local-tts/upload-voice', { method: 'POST', body: data });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error);
+        localTtsGenStatus.textContent = `Voice sample "${json.filename}" uploaded (${json.size_kb} KB)`;
+        fileInput.value = '';
+        nameInput.value = '';
+        await loadLocalVoices();
+        await refreshAllXttsDropdowns();
+      } catch (err) {
+        localTtsGenStatus.textContent = 'Error: ' + err.message;
+      } finally {
+        uploadVoiceBtn.disabled = false;
+      }
+    });
+
+    deleteVoiceBtn.addEventListener('click', async () => {
+      const filename = localVoiceSelect.value;
+      if (!filename) { localTtsGenStatus.textContent = 'No voice selected.'; return; }
+      if (!confirm(`Delete voice sample "${filename}"?`)) return;
+      try {
+        const data = new FormData();
+        data.append('filename', filename);
+        const res = await fetch('/local-tts/delete-voice', { method: 'POST', body: data });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error);
+        localTtsGenStatus.textContent = 'Voice sample deleted.';
+        await loadLocalVoices();
+        await refreshAllXttsDropdowns();
+      } catch (err) {
+        localTtsGenStatus.textContent = 'Error: ' + err.message;
+      }
+    });
+
+    // --- Voice input tab toggle (Upload vs Record) ---
+    document.querySelectorAll('.voice-input-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.voice-input-tab').forEach(t => {
+          t.classList.remove('active');
+          t.style.background = '#f3f4f6'; t.style.color = '#374151';
+        });
+        tab.classList.add('active');
+        tab.style.background = '#6366f1'; tab.style.color = '#fff';
+        const isUpload = tab.dataset.tab === 'upload';
+        document.getElementById('voiceUploadPanel').style.display = isUpload ? '' : 'none';
+        document.getElementById('voiceRecordPanel').style.display = isUpload ? 'none' : '';
+      });
+    });
+
+    // --- Microphone Recording ---
+    const recordBtn = document.getElementById('recordBtn');
+    const recordIcon = document.getElementById('recordIcon');
+    const recordLabel = document.getElementById('recordLabel');
+    const recordTimer = document.getElementById('recordTimer');
+    const recordVisualizer = document.getElementById('recordVisualizer');
+    const recordPreview = document.getElementById('recordPreview');
+    const saveRecordingBtn = document.getElementById('saveRecordingBtn');
+
+    let mediaRecorder = null;
+    let recordedChunks = [];
+    let recordingBlob = null;
+    let recordStream = null;
+    let recordStartTime = 0;
+    let recordTimerInterval = null;
+    let animFrameId = null;
+
+    function formatTime(sec) {
+      const m = Math.floor(sec / 60);
+      const s = Math.floor(sec % 60);
+      return m + ':' + String(s).padStart(2, '0');
+    }
+
+    function drawVisualizer(analyser, canvas) {
+      const ctx = canvas.getContext('2d');
+      const bufLen = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufLen);
+      function draw() {
+        animFrameId = requestAnimationFrame(draw);
+        analyser.getByteTimeDomainData(dataArray);
+        ctx.fillStyle = '#f9fafb';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#dc2626';
+        ctx.beginPath();
+        const sliceW = canvas.width / bufLen;
+        let x = 0;
+        for (let i = 0; i < bufLen; i++) {
+          const v = dataArray[i] / 128.0;
+          const y = (v * canvas.height) / 2;
+          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+          x += sliceW;
+        }
+        ctx.lineTo(canvas.width, canvas.height / 2);
+        ctx.stroke();
+      }
+      draw();
+    }
+
+    function stopVisualizerAndTimer() {
+      if (animFrameId) { cancelAnimationFrame(animFrameId); animFrameId = null; }
+      if (recordTimerInterval) { clearInterval(recordTimerInterval); recordTimerInterval = null; }
+    }
+
+    recordBtn.addEventListener('click', async () => {
+      if (mediaRecorder && mediaRecorder.state === 'recording') {
+        // Stop recording
+        mediaRecorder.stop();
+        return;
+      }
+
+      // Start recording
+      try {
+        recordStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch (err) {
+        localTtsGenStatus.textContent = 'Microphone access denied: ' + err.message;
+        return;
+      }
+
+      recordedChunks = [];
+      recordingBlob = null;
+      saveRecordingBtn.disabled = true;
+      recordPreview.hidden = true;
+      if (recordPreview.dataset.objectUrl) {
+        URL.revokeObjectURL(recordPreview.dataset.objectUrl);
+        delete recordPreview.dataset.objectUrl;
+      }
+
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus' : 'audio/webm';
+      mediaRecorder = new MediaRecorder(recordStream, { mimeType });
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) recordedChunks.push(e.data);
+      };
+
+      mediaRecorder.onstop = () => {
+        stopVisualizerAndTimer();
+        recordStream.getTracks().forEach(t => t.stop());
+
+        recordingBlob = new Blob(recordedChunks, { type: mimeType });
+        const url = URL.createObjectURL(recordingBlob);
+        recordPreview.src = url;
+        recordPreview.dataset.objectUrl = url;
+        recordPreview.hidden = false;
+        saveRecordingBtn.disabled = false;
+
+        recordIcon.style.background = '#fff';
+        recordLabel.textContent = 'Start Recording';
+        recordBtn.style.background = '#dc2626';
+
+        const dur = (Date.now() - recordStartTime) / 1000;
+        localTtsGenStatus.textContent = `Recording complete (${formatTime(dur)}). Preview it, then save as a voice sample.`;
+      };
+
+      mediaRecorder.start(250);
+      recordStartTime = Date.now();
+
+      // UI feedback
+      recordIcon.style.background = '#fca5a5';
+      recordLabel.textContent = 'Stop Recording';
+      recordBtn.style.background = '#991b1b';
+      localTtsGenStatus.textContent = 'Recording... speak clearly for 5-30 seconds.';
+
+      // Timer
+      recordTimerInterval = setInterval(() => {
+        const elapsed = (Date.now() - recordStartTime) / 1000;
+        recordTimer.textContent = formatTime(elapsed);
+        // Auto-stop at 30 seconds
+        if (elapsed >= 30 && mediaRecorder.state === 'recording') {
+          mediaRecorder.stop();
+        }
+      }, 250);
+
+      // Visualizer
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const source = audioCtx.createMediaStreamSource(recordStream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+      drawVisualizer(analyser, recordVisualizer);
+    });
+
+    // Save recording as voice sample (upload to server)
+    saveRecordingBtn.addEventListener('click', async () => {
+      if (!recordingBlob) { localTtsGenStatus.textContent = 'No recording to save.'; return; }
+      saveRecordingBtn.disabled = true;
+      localTtsGenStatus.textContent = 'Saving recording as voice sample...';
+
+      try {
+        const nameInput = document.getElementById('recordVoiceNameInput');
+        const voiceName = nameInput.value.trim() || ('Recording_' + new Date().toISOString().slice(0,19).replace(/[T:]/g, '-'));
+        const ext = recordingBlob.type.includes('webm') ? '.webm' : '.wav';
+        const file = new File([recordingBlob], voiceName + ext, { type: recordingBlob.type });
+
+        const data = new FormData();
+        data.append('voice_file', file);
+        data.append('voice_name', voiceName);
+        const res = await fetch('/local-tts/upload-voice', { method: 'POST', body: data });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error);
+        localTtsGenStatus.textContent = `Voice sample "${json.filename}" saved (${json.size_kb} KB)`;
+        nameInput.value = '';
+        recordingBlob = null;
+        recordPreview.hidden = true;
+        saveRecordingBtn.disabled = true;
+        await loadLocalVoices();
+        await refreshAllXttsDropdowns();
+      } catch (err) {
+        localTtsGenStatus.textContent = 'Error: ' + err.message;
+      } finally {
+        saveRecordingBtn.disabled = !recordingBlob;
+      }
+    });
+
+    // --- Generate speech (both backends) ---
+    localTtsBtn.addEventListener('click', async () => {
+      const text = document.getElementById('localTtsText').value.trim();
+      const backend = localBackendSelect.value;
+
+      if (!text) { localTtsGenStatus.textContent = 'Error: Text is required.'; return; }
+
+      if (backend === 'xtts') {
+        const voiceFile = localVoiceSelect.value;
+        if (!voiceFile) { localTtsGenStatus.textContent = 'Error: Select a voice sample first.'; return; }
+      }
+
+      localTtsBtn.disabled = true;
+      localTtsAudio.hidden = true;
+      localTtsGenStatus.textContent = backend === 'xtts'
+        ? 'Generating speech... (first run downloads ~1.8 GB model)'
+        : 'Generating speech with Edge-TTS...';
+
+      if (localTtsAudio.dataset.objectUrl) {
+        URL.revokeObjectURL(localTtsAudio.dataset.objectUrl);
+        delete localTtsAudio.dataset.objectUrl;
+      }
+
+      try {
+        const data = new FormData();
+        data.append('text', text);
+        data.append('backend', backend);
+        if (backend === 'xtts') {
+          data.append('voice_filename', localVoiceSelect.value);
+          data.append('language', document.getElementById('localTtsLang').value);
+        } else {
+          data.append('edge_voice', edgeVoiceSelect.value);
+          data.append('edge_rate', document.getElementById('edgeRate').value);
+          data.append('edge_pitch', document.getElementById('edgePitch').value);
+        }
+        const res = await fetch('/local-tts/synthesize', { method: 'POST', body: data });
+        if (!res.ok) {
+          const json = await res.json();
+          throw new Error(json.error || 'Synthesis failed');
+        }
+        const blob = await res.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        localTtsAudio.src = objectUrl;
+        localTtsAudio.dataset.objectUrl = objectUrl;
+        localTtsAudio.hidden = false;
+        localTtsAudio.play().catch(() => {});
+        localTtsGenStatus.textContent = 'Speech generated! You can replay or right-click the player to save.';
+      } catch (err) {
+        localTtsGenStatus.textContent = 'Error: ' + err.message;
+      } finally {
+        localTtsBtn.disabled = false;
       }
     });
   </script>

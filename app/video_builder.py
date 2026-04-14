@@ -134,6 +134,10 @@ def build_slideshow(
     voice_id: str | None = None,
     el_stability: float | None = None,
     el_similarity: float | None = None,
+    edge_voice: str | None = None,
+    edge_rate: str | None = None,
+    edge_pitch: str | None = None,
+    speaker_wav: str | None = None,
 ) -> Path:
     image_list = sorted(
         [p for p in image_paths if p.is_file()],
@@ -146,7 +150,12 @@ def build_slideshow(
     voice_path: Path | None = None
     if settings.enable_tts and narration:
         print(f"TTS enabled, narration length={len(narration)}")
-        voice_path = synthesize_to_file(settings, narration, tts_provider=tts_provider, voice_id=voice_id, el_stability=el_stability, el_similarity=el_similarity)
+        voice_path = synthesize_to_file(
+            settings, narration, tts_provider=tts_provider, voice_id=voice_id,
+            el_stability=el_stability, el_similarity=el_similarity,
+            edge_voice=edge_voice, edge_rate=edge_rate, edge_pitch=edge_pitch,
+            speaker_wav=speaker_wav,
+        )
         print(f"TTS file: {voice_path}")
     else:
         print("TTS disabled or no narration text")

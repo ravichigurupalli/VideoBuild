@@ -13,7 +13,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 from .config import Settings
 
-TTS_PROVIDERS = ("pyttsx3", "elevenlabs")
+TTS_PROVIDERS = ("pyttsx3", "elevenlabs", "edge_tts", "xtts")
 
 ELEVENLABS_TTS_URL = "https://api.elevenlabs.io/v1/text-to-speech"
 ELEVENLABS_VOICES_URL = "https://api.elevenlabs.io/v1/voices"
@@ -145,8 +145,12 @@ def synthesize_to_file(
     voice_id: str | None = None,
     el_stability: float | None = None,
     el_similarity: float | None = None,
+    edge_voice: str | None = None,
+    edge_rate: str | None = None,
+    edge_pitch: str | None = None,
+    speaker_wav: str | None = None,
 ) -> Path:
-    """Generate narration audio file. Supports pyttsx3 and ElevenLabs."""
+    """Generate narration audio file. Supports pyttsx3, ElevenLabs, Edge-TTS, and XTTS."""
     if not text.strip():
         raise ValueError("TTS text is empty")
 
@@ -172,6 +176,40 @@ def synthesize_to_file(
             print(f"  ElevenLabs failed ({exc}), falling back to pyttsx3")
             out_path = tmpdir / "voice.wav"
             _synthesize_pyttsx3(settings, text, out_path)
+
+    elif provider == "edge_tts":
+        from .local_tts import synthesize_edge
+        out_path = tmpdir / "voice.mp3"
+        try:
+            synthesize_edge(
+                text, out_path,
+                voice=edge_voice or "en-US-GuyNeural",
+                rate=edge_rate or "+0%",
+                pitch=edge_pitch or "+0Hz",
+            )
+        except Exception as exc:
+            print(f"  Edge-TTS failed ({exc}), falling back to pyttsx3")
+            out_path = tmpdir / "voice.wav"
+            _synthesize_pyttsx3(settings, text, out_path)
+
+    elif provider == "xtts":
+        from .local_tts import synthesize_xtts
+        out_path = tmpdir / "voice.wav"
+        if not speaker_wav:
+            raise ValueError("XTTS requires a voice sample (speaker_wav).")
+        try:
+            synthesize_xtts(
+                text, out_path,
+                speaker_wav=speaker_wav,
+                language=settings.local_tts_language,
+                model_name=settings.local_tts_model,
+                device=settings.local_tts_device,
+            )
+        except Exception as exc:
+            print(f"  XTTS failed ({exc}), falling back to pyttsx3")
+            out_path = tmpdir / "voice.wav"
+            _synthesize_pyttsx3(settings, text, out_path)
+
     else:
         out_path = tmpdir / "voice.wav"
         _synthesize_pyttsx3(settings, text, out_path)

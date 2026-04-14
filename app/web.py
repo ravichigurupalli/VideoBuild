@@ -12,6 +12,10 @@ from .config import load_settings
 from .image_gen import generate_image
 from .script_gen import generate_script, DURATION_OPTIONS, PROVIDERS
 from .text_to_video import text_to_video, VIDEO_STYLES
+from .local_tts import (
+    list_voice_samples, synthesize_local, is_available as local_tts_available,
+    available_backends, fetch_edge_voices,
+)
 from .tts import synthesize_to_file, fetch_elevenlabs_voices, TTS_PROVIDERS
 from .video_builder import build_slideshow, default_title, natural_sort_key
 from .youtube_client import upload_video
@@ -79,12 +83,19 @@ def build():
         voice_id = (request.form.get("voice_id") or "").strip() or None
         el_stability = float(request.form.get("el_stability")) if request.form.get("el_stability") else None
         el_similarity = float(request.form.get("el_similarity")) if request.form.get("el_similarity") else None
+        edge_voice = (request.form.get("edge_voice") or "").strip() or None
+        edge_rate = (request.form.get("edge_rate") or "").strip() or None
+        edge_pitch = (request.form.get("edge_pitch") or "").strip() or None
+        speaker_wav_name = (request.form.get("speaker_wav") or "").strip()
+        speaker_wav = str(settings.voice_samples_dir / secure_filename(speaker_wav_name)) if speaker_wav_name else None
         narration = description if settings.enable_tts else None
         try:
             video_path = build_slideshow(
                 settings, saved_paths, narration=narration, video_format=video_format,
                 video_style=video_style, tts_provider=tts_provider, voice_id=voice_id,
                 el_stability=el_stability, el_similarity=el_similarity,
+                edge_voice=edge_voice, edge_rate=edge_rate, edge_pitch=edge_pitch,
+                speaker_wav=speaker_wav,
             )
         except Exception as exc:
             print(f"Build failed: {exc}")
@@ -107,9 +118,19 @@ def preview_voice():
     voice_id = (request.form.get("voice_id") or "").strip() or None
     el_stability = float(request.form.get("el_stability")) if request.form.get("el_stability") else None
     el_similarity = float(request.form.get("el_similarity")) if request.form.get("el_similarity") else None
+    edge_voice = (request.form.get("edge_voice") or "").strip() or None
+    edge_rate = (request.form.get("edge_rate") or "").strip() or None
+    edge_pitch = (request.form.get("edge_pitch") or "").strip() or None
+    speaker_wav_name = (request.form.get("speaker_wav") or "").strip()
+    speaker_wav = str(settings.voice_samples_dir / secure_filename(speaker_wav_name)) if speaker_wav_name else None
 
     try:
-        voice_path = synthesize_to_file(settings, description, tts_provider=tts_provider, voice_id=voice_id, el_stability=el_stability, el_similarity=el_similarity)
+        voice_path = synthesize_to_file(
+            settings, description, tts_provider=tts_provider, voice_id=voice_id,
+            el_stability=el_stability, el_similarity=el_similarity,
+            edge_voice=edge_voice, edge_rate=edge_rate, edge_pitch=edge_pitch,
+            speaker_wav=speaker_wav,
+        )
     except Exception as exc:
         print(f"Preview voice failed: {exc}")
         return {"error": str(exc)}, 500
@@ -199,6 +220,11 @@ def t2v():
     voice_id = (request.form.get("voice_id") or "").strip() or None
     el_stability = float(request.form.get("el_stability")) if request.form.get("el_stability") else None
     el_similarity = float(request.form.get("el_similarity")) if request.form.get("el_similarity") else None
+    edge_voice = (request.form.get("edge_voice") or "").strip() or None
+    edge_rate = (request.form.get("edge_rate") or "").strip() or None
+    edge_pitch = (request.form.get("edge_pitch") or "").strip() or None
+    speaker_wav_name = (request.form.get("speaker_wav") or "").strip()
+    speaker_wav = str(settings.voice_samples_dir / secure_filename(speaker_wav_name)) if speaker_wav_name else None
 
     try:
         output_path = text_to_video(
@@ -209,6 +235,10 @@ def t2v():
             voice_id=voice_id,
             el_stability=el_stability,
             el_similarity=el_similarity,
+            edge_voice=edge_voice,
+            edge_rate=edge_rate,
+            edge_pitch=edge_pitch,
+            speaker_wav=speaker_wav,
         )
         return send_file(
             str(output_path),
@@ -248,6 +278,173 @@ def gen_image():
         )
     except Exception as exc:
         print(f"Image generation failed: {exc}")
+        return {"error": str(exc)}, 500
+
+
+# ---------------------------------------------------------------------------
+# Self-Hosted TTS (XTTS v2) endpoints
+# ---------------------------------------------------------------------------
+
+@app.get("/local-tts/status")
+def local_tts_status():
+    """Check which TTS backends are installed."""
+    backends = available_backends()
+    return {"available": local_tts_available(), "backends": backends}
+
+
+@app.get("/local-tts/voices")
+def local_tts_voices():
+    """List voice samples in the voice_samples directory (for XTTS cloning)."""
+    samples = list_voice_samples(settings.voice_samples_dir)
+    return {"status": "ok", "voices": samples}
+
+
+@app.get("/local-tts/edge-voices")
+def local_tts_edge_voices():
+    """List available Edge-TTS voices (Microsoft free cloud)."""
+    try:
+        voices = fetch_edge_voices()
+        return {"status": "ok", "voices": voices}
+    except Exception as exc:
+        return {"error": str(exc)}, 500
+
+
+def _convert_to_wav(src: Path, dst: Path) -> bool:
+    """Convert an audio file to WAV using ffmpeg (bundled via imageio-ffmpeg)."""
+    try:
+        import imageio_ffmpeg
+        ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        return False
+    import subprocess
+    try:
+        subprocess.run(
+            [ffmpeg_exe, "-y", "-i", str(src), "-ar", "22050", "-ac", "1", str(dst)],
+            capture_output=True, timeout=30, check=True,
+        )
+        return dst.exists() and dst.stat().st_size > 0
+    except Exception as exc:
+        print(f"[LocalTTS] ffmpeg conversion failed: {exc}")
+        return False
+
+
+@app.post("/local-tts/upload-voice")
+def local_tts_upload_voice():
+    """Upload a voice sample WAV/MP3 to voice_samples/."""
+    file = request.files.get("voice_file")
+    if not file or not file.filename:
+        return {"error": "No voice file uploaded."}, 400
+
+    allowed = {".wav", ".mp3", ".ogg", ".flac", ".m4a", ".webm"}
+    ext = Path(file.filename).suffix.lower()
+    if ext not in allowed:
+        return {"error": f"Unsupported format. Use: {', '.join(allowed)}"}, 400
+
+    voice_name = (request.form.get("voice_name") or "").strip()
+    if not voice_name:
+        voice_name = Path(file.filename).stem
+
+    settings.voice_samples_dir.mkdir(parents=True, exist_ok=True)
+
+    # Save the uploaded file (possibly in a non-WAV format)
+    tmp_name = secure_filename(voice_name + ext)
+    if not tmp_name:
+        return {"error": "Invalid voice name."}, 400
+    dest = settings.voice_samples_dir / tmp_name
+    file.save(dest)
+
+    # Auto-convert non-WAV formats to WAV for XTTS compatibility
+    if ext != ".wav":
+        wav_name = secure_filename(voice_name + ".wav")
+        wav_dest = settings.voice_samples_dir / wav_name
+        if _convert_to_wav(dest, wav_dest):
+            dest.unlink()  # remove original non-wav file
+            dest = wav_dest
+            tmp_name = wav_name
+            print(f"[LocalTTS] Converted {ext} → .wav: {dest}")
+        else:
+            print(f"[LocalTTS] Conversion to WAV failed, keeping original {ext} file")
+
+    print(f"[LocalTTS] Voice sample saved: {dest} ({dest.stat().st_size} bytes)")
+    return {"status": "ok", "filename": tmp_name, "size_kb": round(dest.stat().st_size / 1024, 1)}
+
+
+@app.post("/local-tts/delete-voice")
+def local_tts_delete_voice():
+    """Delete a voice sample."""
+    filename = (request.form.get("filename") or "").strip()
+    if not filename:
+        return {"error": "Filename is required."}, 400
+    safe = secure_filename(filename)
+    target = settings.voice_samples_dir / safe
+    if not target.exists():
+        return {"error": "Voice sample not found."}, 404
+    target.unlink()
+    return {"status": "ok"}
+
+
+@app.post("/local-tts/synthesize")
+def local_tts_synthesize():
+    """Synthesize text using self-hosted TTS (XTTS voice clone or Edge-TTS)."""
+    if not local_tts_available():
+        return {"error": "No TTS backend installed. Run: pip install edge-tts"}, 400
+
+    text = (request.form.get("text") or "").strip()
+    if not text:
+        return {"error": "Text is required."}, 400
+
+    backend = (request.form.get("backend") or "auto").strip().lower()
+    language = (request.form.get("language") or settings.local_tts_language).strip()
+
+    # XTTS voice cloning params
+    voice_filename = (request.form.get("voice_filename") or "").strip()
+    speaker_wav = None
+    if voice_filename:
+        speaker_wav = settings.voice_samples_dir / secure_filename(voice_filename)
+        if not speaker_wav.exists():
+            return {"error": f"Voice sample not found: {voice_filename}"}, 404
+
+    # Edge-TTS params
+    edge_voice = (request.form.get("edge_voice") or "en-US-GuyNeural").strip()
+    edge_rate = (request.form.get("edge_rate") or "+0%").strip()
+    edge_pitch = (request.form.get("edge_pitch") or "+0Hz").strip()
+
+    try:
+        import tempfile
+        tmpdir = Path(tempfile.mkdtemp(prefix="videobuild_localtts_"))
+        ext = ".wav" if backend == "xtts" else ".mp3"
+        out_path = tmpdir / f"output{ext}"
+
+        synthesize_local(
+            text=text,
+            out_path=out_path,
+            backend=backend,
+            speaker_wav=speaker_wav,
+            edge_voice=edge_voice,
+            edge_rate=edge_rate,
+            edge_pitch=edge_pitch,
+            language=language,
+            model_name=settings.local_tts_model,
+            device=settings.local_tts_device,
+        )
+
+        audio_bytes = out_path.read_bytes()
+        mime = "audio/mpeg" if out_path.suffix == ".mp3" else "audio/wav"
+
+        try:
+            out_path.unlink()
+            tmpdir.rmdir()
+        except Exception:
+            pass
+
+        return send_file(
+            io.BytesIO(audio_bytes),
+            mimetype=mime,
+            as_attachment=False,
+            download_name=f"local_tts_output{ext}",
+        )
+    except Exception as exc:
+        print(f"[LocalTTS] Synthesis failed: {exc}")
         return {"error": str(exc)}, 500
 
 

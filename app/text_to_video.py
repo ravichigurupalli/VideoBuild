@@ -244,6 +244,10 @@ def text_to_video(
     voice_id: str | None = None,
     el_stability: float | None = None,
     el_similarity: float | None = None,
+    edge_voice: str | None = None,
+    edge_rate: str | None = None,
+    edge_pitch: str | None = None,
+    speaker_wav: str | None = None,
     on_progress: callable | None = None,
 ) -> Path:
     scenes = _split_into_scenes(text)
@@ -348,6 +352,8 @@ def text_to_video(
                 settings, full_narration,
                 tts_provider=tts_provider, voice_id=voice_id,
                 el_stability=el_stability, el_similarity=el_similarity,
+                edge_voice=edge_voice, edge_rate=edge_rate, edge_pitch=edge_pitch,
+                speaker_wav=speaker_wav,
             )
             voice_audio = AudioFileClip(str(voice_path)).volumex(settings.audio_volume)
 
