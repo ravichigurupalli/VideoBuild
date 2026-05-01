@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import tempfile
 from pathlib import Path
 
@@ -138,6 +139,20 @@ def fetch_elevenlabs_voices(api_key: str) -> list[dict]:
 # Main dispatcher
 # ---------------------------------------------------------------------------
 
+def _strip_tone_markers(text: str) -> str:
+    """Remove inline tone markers like (slow, dramatic tone) from text for non-Edge providers."""
+    from .local_tts import TONE_MAP, _TONE_PATTERN
+    def _replace(m: re.Match) -> str:
+        key = m.group(1).strip().lower()
+        if key in TONE_MAP:
+            return " "
+        for tone_key in TONE_MAP:
+            if all(word in key for word in re.split(r'[,\s]+', tone_key) if len(word) > 2):
+                return " "
+        return m.group(0)  # not a known tone marker — keep as-is
+    return re.sub(r'\s+', ' ', _TONE_PATTERN.sub(_replace, text)).strip()
+
+
 def synthesize_to_file(
     settings: Settings,
     text: str,
@@ -156,6 +171,10 @@ def synthesize_to_file(
 
     provider = (tts_provider or settings.tts_provider).strip().lower()
 
+    # Strip tone markers for providers that don't support SSML (edge_tts handles them natively)
+    if provider not in ("edge_tts",):
+        text = _strip_tone_markers(text)
+
     tmpdir = Path(tempfile.mkdtemp(prefix="videobuild_tts_"))
 
     if provider == "elevenlabs":
@@ -164,12 +183,8 @@ def synthesize_to_file(
             raise RuntimeError("ELEVENLABS_API_KEY not set in .env")
         vid = voice_id or settings.elevenlabs_voice_id
         out_path = tmpdir / "voice.mp3"
-        raw_stab = el_stability if el_stability is not None else settings.elevenlabs_stability
-        raw_sim = el_similarity if el_similarity is not None else settings.elevenlabs_similarity_boost
-        # Convert whole numbers (e.g., 45) to decimals (e.g., 0.45)
-        # We check if they are > 1 to avoid double-dividing if they are already decimals
-        stab = raw_stab / 100.0 if raw_stab > 1 else raw_stab
-        sim = raw_sim / 100.0 if raw_sim > 1 else raw_sim
+        stab = (el_stability / 100.0) if el_stability is not None else settings.elevenlabs_stability
+        sim = (el_similarity / 100.0) if el_similarity is not None else settings.elevenlabs_similarity_boost
         try:
             _synthesize_elevenlabs(
                 text, out_path, api_key, vid, settings.elevenlabs_model_id,

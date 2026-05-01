@@ -227,6 +227,30 @@
       <label>Description
         <textarea name="description">{{ defaults.description }}</textarea>
       </label>
+      <!-- Tone markers hint (Edge-TTS only) -->
+      <div id="toneHint" style="display:none; margin:-8px 0 12px 0; background:#1a2a1a; border:1px solid #2a4a2a; border-radius:8px; padding:10px 14px; font-size:12px; color:#a0c8a0;">
+        <div style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="document.getElementById('toneHintBody').style.display = document.getElementById('toneHintBody').style.display === 'none' ? 'block' : 'none'">
+          <span style="font-weight:600; color:#6dbf6d;">🎭 Tone Markers (Edge-TTS)</span>
+          <span style="color:#6dbf6d; font-size:14px;">▾ show / hide</span>
+        </div>
+        <div id="toneHintBody" style="display:none; margin-top:8px; line-height:1.7;">
+          Embed tone markers inline in your text — they control how each segment sounds and are <em>not</em> spoken aloud.<br>
+          <strong>Example:</strong>
+          <code style="display:block; background:#0f1f0f; padding:6px 10px; border-radius:4px; margin:6px 0; color:#c8e6c8; font-size:11px; white-space:pre-wrap;">(slow, dramatic tone) Welcome to today's update. Here are the key facts. (serious tone) The situation requires attention. (tense tone) Time is running out. (slow, cinematic) And yet, hope remains.</code>
+          <table style="border-collapse:collapse; width:100%; margin-top:4px;">
+            <tr style="color:#6dbf6d;"><th style="text-align:left; padding:2px 8px 2px 0;">Marker</th><th style="text-align:left; padding:2px 8px;">Effect</th></tr>
+            <tr><td style="padding:1px 8px 1px 0;"><code>(slow, dramatic tone)</code></td><td style="padding:1px 8px;">Very slow, deep pitch</td></tr>
+            <tr><td style="padding:1px 8px 1px 0;"><code>(clear, explanatory tone)</code></td><td style="padding:1px 8px;">Medium pace, louder — great for facts</td></tr>
+            <tr><td style="padding:1px 8px 1px 0;"><code>(curious tone)</code></td><td style="padding:1px 8px;">Medium pace, higher pitch</td></tr>
+            <tr><td style="padding:1px 8px 1px 0;"><code>(serious tone)</code></td><td style="padding:1px 8px;">Slow, lower pitch</td></tr>
+            <tr><td style="padding:1px 8px 1px 0;"><code>(tense tone)</code></td><td style="padding:1px 8px;">Fast, higher pitch, loud</td></tr>
+            <tr><td style="padding:1px 8px 1px 0;"><code>(quiet tone)</code></td><td style="padding:1px 8px;">Slow, soft volume</td></tr>
+            <tr><td style="padding:1px 8px 1px 0;"><code>(analytical tone)</code></td><td style="padding:1px 8px;">Medium pace, slightly lower pitch</td></tr>
+            <tr><td style="padding:1px 8px 1px 0;"><code>(measured tone)</code></td><td style="padding:1px 8px;">Slow, neutral pitch</td></tr>
+            <tr><td style="padding:1px 8px 1px 0;"><code>(slow, cinematic)</code></td><td style="padding:1px 8px;">Very slow, very deep, soft — for conclusions</td></tr>
+          </table>
+        </div>
+      </div>
       <div class="row">
         <label>Format
           <select name="video_format">
@@ -708,6 +732,19 @@
       });
     });
 
+    // Tone markers hint — show only when Edge-TTS is selected in Build form
+    const toneHint = document.getElementById('toneHint');
+    const buildTtsSelect = document.querySelector('#build-section select[name="tts_provider"]');
+    function updateToneHint() {
+      if (buildTtsSelect && toneHint) {
+        toneHint.style.display = buildTtsSelect.value === 'edge_tts' ? 'block' : 'none';
+      }
+    }
+    if (buildTtsSelect) {
+      buildTtsSelect.addEventListener('change', updateToneHint);
+      updateToneHint();
+    }
+
     const form = document.getElementById('form');
     const statusEl = document.getElementById('status');
     const previewBtn = document.getElementById('previewBtn');
@@ -732,8 +769,8 @@
         data.append('tts_provider', pvProvider);
         if (form.elements.voice_id) data.append('voice_id', form.elements.voice_id.value);
         if (pvProvider === 'elevenlabs') {
-          data.append('el_stability', (form.elements.el_stability.value / 100).toFixed(2));
-          data.append('el_similarity', (form.elements.el_similarity.value / 100).toFixed(2));
+          data.append('el_stability', form.elements.el_stability.value);
+          data.append('el_similarity', form.elements.el_similarity.value);
         }
         if (pvProvider === 'edge_tts') {
           if (form.elements.edge_voice) data.append('edge_voice', form.elements.edge_voice.value);
@@ -964,8 +1001,8 @@
         data.append('tts_provider', ttsProvider);
         if (voiceId) data.append('voice_id', voiceId);
         if (ttsProvider === 'elevenlabs') {
-          data.append('el_stability', (elStability / 100).toFixed(2));
-          data.append('el_similarity', (elSimilarity / 100).toFixed(2));
+          data.append('el_stability', elStability);
+          data.append('el_similarity', elSimilarity);
         }
         if (ttsProvider === 'edge_tts') {
           if (edgeVoice) data.append('edge_voice', edgeVoice);
