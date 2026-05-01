@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import tempfile
 from pathlib import Path
 
@@ -138,6 +139,20 @@ def fetch_elevenlabs_voices(api_key: str) -> list[dict]:
 # Main dispatcher
 # ---------------------------------------------------------------------------
 
+def _strip_tone_markers(text: str) -> str:
+    """Remove inline tone markers like (slow, dramatic tone) from text for non-Edge providers."""
+    from .local_tts import TONE_MAP, _TONE_PATTERN
+    def _replace(m: re.Match) -> str:
+        key = m.group(1).strip().lower()
+        if key in TONE_MAP:
+            return " "
+        for tone_key in TONE_MAP:
+            if all(word in key for word in re.split(r'[,\s]+', tone_key) if len(word) > 2):
+                return " "
+        return m.group(0)  # not a known tone marker — keep as-is
+    return re.sub(r'\s+', ' ', _TONE_PATTERN.sub(_replace, text)).strip()
+
+
 def synthesize_to_file(
     settings: Settings,
     text: str,
@@ -155,6 +170,10 @@ def synthesize_to_file(
         raise ValueError("TTS text is empty")
 
     provider = (tts_provider or settings.tts_provider).strip().lower()
+
+    # Strip tone markers for providers that don't support SSML (edge_tts handles them natively)
+    if provider not in ("edge_tts",):
+        text = _strip_tone_markers(text)
 
     tmpdir = Path(tempfile.mkdtemp(prefix="videobuild_tts_"))
 

@@ -6,8 +6,114 @@
 from __future__ import annotations
 
 import asyncio
+import html
+import re
 import threading
 from pathlib import Path
+from typing import List, Tuple
+
+# ---------------------------------------------------------------------------
+# Tone marker → SSML prosody mapping
+# ---------------------------------------------------------------------------
+
+# Keys are lowercased, stripped. Values: (rate, pitch, volume)
+TONE_MAP: dict[str, tuple[str, str, str]] = {
+    "slow, dramatic tone":     ("x-slow", "-4st",  "medium"),
+    "slow, dramatic":          ("x-slow", "-4st",  "medium"),
+    "clear, explanatory tone": ("medium",  "+0st",  "loud"),
+    "clear, explanatory":      ("medium",  "+0st",  "loud"),
+    "curious tone":            ("medium",  "+3st",  "medium"),
+    "curious":                 ("medium",  "+3st",  "medium"),
+    "serious tone":            ("slow",    "-2st",  "medium"),
+    "serious":                 ("slow",    "-2st",  "medium"),
+    "tense tone":              ("fast",    "+2st",  "loud"),
+    "tense":                   ("fast",    "+2st",  "loud"),
+    "quiet tone":              ("slow",    "-1st",  "soft"),
+    "quiet":                   ("slow",    "-1st",  "soft"),
+    "analytical tone":         ("medium",  "-1st",  "medium"),
+    "analytical":              ("medium",  "-1st",  "medium"),
+    "measured tone":           ("slow",    "+0st",  "medium"),
+    "measured":                ("slow",    "+0st",  "medium"),
+    "slow, cinematic":         ("x-slow",  "-5st",  "soft"),
+    "cinematic":               ("x-slow",  "-5st",  "soft"),
+}
+
+_TONE_PATTERN = re.compile(r'\(([^)]+)\)')
+
+
+def _resolve_tone(marker_text: str, default_rate: str, default_pitch: str) -> tuple[str, str, str]:
+    """Map a marker string to (rate, pitch, volume). Falls back to defaults."""
+    key = marker_text.strip().lower()
+    if key in TONE_MAP:
+        return TONE_MAP[key]
+    # Try partial match — e.g. 'slow dramatic' matches 'slow, dramatic tone'
+    for tone_key, params in TONE_MAP.items():
+        if all(word in key for word in re.split(r'[,\s]+', tone_key) if len(word) > 2):
+            return params
+    return (default_rate, default_pitch, "medium")
+
+
+def _has_tone_markers(text: str) -> bool:
+    """Return True if the text contains at least one recognisable tone marker."""
+    for m in _TONE_PATTERN.finditer(text):
+        key = m.group(1).strip().lower()
+        if key in TONE_MAP:
+            return True
+        for tone_key in TONE_MAP:
+            if all(word in key for word in re.split(r'[,\s]+', tone_key) if len(word) > 2):
+                return True
+    return False
+
+
+def _parse_tone_markers(
+    text: str,
+    default_rate: str = "+0%",
+    default_pitch: str = "+0Hz",
+) -> List[Tuple[str, str, str, str]]:
+    """Split text on tone markers and return list of (segment_text, rate, pitch, volume)."""
+    segments: List[Tuple[str, str, str, str]] = []
+    current_rate, current_pitch, current_vol = default_rate, default_pitch, "medium"
+    last_end = 0
+
+    for m in _TONE_PATTERN.finditer(text):
+        # Text before this marker
+        segment = text[last_end:m.start()].strip()
+        if segment:
+            segments.append((segment, current_rate, current_pitch, current_vol))
+
+        # Resolve new tone
+        current_rate, current_pitch, current_vol = _resolve_tone(
+            m.group(1), default_rate, default_pitch
+        )
+        last_end = m.end()
+
+    # Remaining text after last marker
+    tail = text[last_end:].strip()
+    if tail:
+        segments.append((tail, current_rate, current_pitch, current_vol))
+
+    return segments
+
+
+def _build_ssml(
+    segments: List[Tuple[str, str, str, str]],
+    voice: str,
+) -> str:
+    """Build an SSML document from (text, rate, pitch, volume) segments."""
+    parts = [
+        '<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" '
+        'xmlns:mstts="http://www.w3.org/2001/mstts" xml:lang="en-US">',
+        f'<voice name="{html.escape(voice)}">',
+    ]
+    for seg_text, rate, pitch, volume in segments:
+        safe = html.escape(seg_text)
+        parts.append(
+            f'<prosody rate="{rate}" pitch="{pitch}" volume="{volume}">'
+            f'{safe}</prosody>'
+        )
+    parts.append('</voice></speak>')
+    return ''.join(parts)
+
 
 # ---------------------------------------------------------------------------
 # Backend detection
@@ -218,18 +324,32 @@ def synthesize_edge(
     rate: str = "+0%",
     pitch: str = "+0Hz",
 ) -> Path:
-    """Synthesize speech using Microsoft Edge-TTS (free, no API key)."""
+    """Synthesize speech using Microsoft Edge-TTS (free, no API key).
+
+    If the text contains inline tone markers such as (slow, dramatic tone) or
+    (tense tone), the text is split into segments and each segment is rendered
+    with the corresponding SSML prosody settings (rate/pitch/volume). Markers
+    are removed from the spoken output.
+    """
     import edge_tts
 
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    async def _synth():
-        communicate = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch)
-        await communicate.save(str(out_path))
-
-    print(f"[EdgeTTS] Synthesizing {len(text)} chars, voice={voice}")
-    _run_async(_synth())
+    if _has_tone_markers(text):
+        segments = _parse_tone_markers(text, default_rate=rate, default_pitch=pitch)
+        ssml = _build_ssml(segments, voice)
+        print(f"[EdgeTTS] Tone markers detected — using SSML ({len(segments)} segments), voice={voice}")
+        async def _synth_ssml():
+            communicate = edge_tts.Communicate(ssml, voice)
+            await communicate.save(str(out_path))
+        _run_async(_synth_ssml())
+    else:
+        print(f"[EdgeTTS] Synthesizing {len(text)} chars, voice={voice}")
+        async def _synth():
+            communicate = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch)
+            await communicate.save(str(out_path))
+        _run_async(_synth())
 
     if not out_path.exists() or out_path.stat().st_size == 0:
         raise RuntimeError("Edge-TTS: output audio file was not created")
