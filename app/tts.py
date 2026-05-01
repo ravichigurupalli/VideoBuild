@@ -183,8 +183,8 @@ def synthesize_to_file(
             raise RuntimeError("ELEVENLABS_API_KEY not set in .env")
         vid = voice_id or settings.elevenlabs_voice_id
         out_path = tmpdir / "voice.mp3"
-        stab = el_stability if el_stability is not None else settings.elevenlabs_stability
-        sim = el_similarity if el_similarity is not None else settings.elevenlabs_similarity_boost
+        stab = (el_stability / 100.0) if el_stability is not None else settings.elevenlabs_stability
+        sim = (el_similarity / 100.0) if el_similarity is not None else settings.elevenlabs_similarity_boost
         try:
             _synthesize_elevenlabs(
                 text, out_path, api_key, vid, settings.elevenlabs_model_id,

@@ -769,8 +769,8 @@
         data.append('tts_provider', pvProvider);
         if (form.elements.voice_id) data.append('voice_id', form.elements.voice_id.value);
         if (pvProvider === 'elevenlabs') {
-          data.append('el_stability', (form.elements.el_stability.value / 100).toFixed(2));
-          data.append('el_similarity', (form.elements.el_similarity.value / 100).toFixed(2));
+          data.append('el_stability', form.elements.el_stability.value);
+          data.append('el_similarity', form.elements.el_similarity.value);
         }
         if (pvProvider === 'edge_tts') {
           if (form.elements.edge_voice) data.append('edge_voice', form.elements.edge_voice.value);
@@ -1001,8 +1001,8 @@
         data.append('tts_provider', ttsProvider);
         if (voiceId) data.append('voice_id', voiceId);
         if (ttsProvider === 'elevenlabs') {
-          data.append('el_stability', (elStability / 100).toFixed(2));
-          data.append('el_similarity', (elSimilarity / 100).toFixed(2));
+          data.append('el_stability', elStability);
+          data.append('el_similarity', elSimilarity);
         }
         if (ttsProvider === 'edge_tts') {
           if (edgeVoice) data.append('edge_voice', edgeVoice);

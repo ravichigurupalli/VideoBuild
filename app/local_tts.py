@@ -11,7 +11,39 @@ import re
 import threading
 from pathlib import Path
 from typing import List, Tuple
+import sys
 
+# ---------------------------------------------------------------------------
+# CRITICAL: Monkeypatch transformers BEFORE ANY COQUI IMPORT
+# ---------------------------------------------------------------------------
+# Coqui-TTS has compatibility issues with newer transformers on Windows.
+# We inject the missing function before TTS tries to import it.
+
+try:
+    import torch
+    # Create a fake isin_mps_friendly if it doesn't exist
+    import transformers.pytorch_utils as pu_module
+    if not hasattr(pu_module, 'isin_mps_friendly'):
+        pu_module.isin_mps_friendly = torch.isin
+except Exception:
+    pass
+
+# Also patch sys.modules to prevent re-import issues
+try:
+    import torch
+    class PatchedPyTorchUtils:
+        def __getattr__(self, name):
+            if name == 'isin_mps_friendly':
+                return torch.isin
+            import transformers.pytorch_utils as pu
+            return getattr(pu, name)
+    
+    if 'transformers.pytorch_utils' not in sys.modules or not hasattr(sys.modules.get('transformers.pytorch_utils'), 'isin_mps_friendly'):
+        import transformers.pytorch_utils as pu
+        if not hasattr(pu, 'isin_mps_friendly'):
+            pu.isin_mps_friendly = torch.isin
+except Exception:
+    pass
 # ---------------------------------------------------------------------------
 # Tone marker → SSML prosody mapping
 # ---------------------------------------------------------------------------
