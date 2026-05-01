@@ -8,6 +8,39 @@ from __future__ import annotations
 import asyncio
 import threading
 from pathlib import Path
+import sys
+
+# ---------------------------------------------------------------------------
+# CRITICAL: Monkeypatch transformers BEFORE ANY COQUI IMPORT
+# ---------------------------------------------------------------------------
+# Coqui-TTS has compatibility issues with newer transformers on Windows.
+# We inject the missing function before TTS tries to import it.
+
+try:
+    import torch
+    # Create a fake isin_mps_friendly if it doesn't exist
+    import transformers.pytorch_utils as pu_module
+    if not hasattr(pu_module, 'isin_mps_friendly'):
+        pu_module.isin_mps_friendly = torch.isin
+except Exception:
+    pass
+
+# Also patch sys.modules to prevent re-import issues
+try:
+    import torch
+    class PatchedPyTorchUtils:
+        def __getattr__(self, name):
+            if name == 'isin_mps_friendly':
+                return torch.isin
+            import transformers.pytorch_utils as pu
+            return getattr(pu, name)
+    
+    if 'transformers.pytorch_utils' not in sys.modules or not hasattr(sys.modules.get('transformers.pytorch_utils'), 'isin_mps_friendly'):
+        import transformers.pytorch_utils as pu
+        if not hasattr(pu, 'isin_mps_friendly'):
+            pu.isin_mps_friendly = torch.isin
+except Exception:
+    pass
 
 # ---------------------------------------------------------------------------
 # Backend detection
@@ -61,20 +94,38 @@ def _accept_coqui_tos():
         pass
 
 
+# Apply patch immediately on module load
+_patch_transformers()
+
+
+# Cache backend availability at module load time
+_COQUI_AVAILABLE = None
+_EDGE_TTS_AVAILABLE = None
+
 def _has_coqui() -> bool:
+    global _COQUI_AVAILABLE
+    if _COQUI_AVAILABLE is not None:
+        return _COQUI_AVAILABLE
     try:
-        _patch_transformers()
         import TTS  # noqa: F401
+        _COQUI_AVAILABLE = True
         return True
-    except ImportError:
+    except Exception as e:
+        print(f"[DEBUG] Coqui import failed: {e}")
+        _COQUI_AVAILABLE = False
         return False
 
 
 def _has_edge_tts() -> bool:
+    global _EDGE_TTS_AVAILABLE
+    if _EDGE_TTS_AVAILABLE is not None:
+        return _EDGE_TTS_AVAILABLE
     try:
         import edge_tts  # noqa: F401
+        _EDGE_TTS_AVAILABLE = True
         return True
     except ImportError:
+        _EDGE_TTS_AVAILABLE = False
         return False
 
 

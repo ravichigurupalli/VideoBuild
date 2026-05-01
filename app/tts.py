@@ -164,8 +164,12 @@ def synthesize_to_file(
             raise RuntimeError("ELEVENLABS_API_KEY not set in .env")
         vid = voice_id or settings.elevenlabs_voice_id
         out_path = tmpdir / "voice.mp3"
-        stab = el_stability if el_stability is not None else settings.elevenlabs_stability
-        sim = el_similarity if el_similarity is not None else settings.elevenlabs_similarity_boost
+        raw_stab = el_stability if el_stability is not None else settings.elevenlabs_stability
+        raw_sim = el_similarity if el_similarity is not None else settings.elevenlabs_similarity_boost
+        # Convert whole numbers (e.g., 45) to decimals (e.g., 0.45)
+        # We check if they are > 1 to avoid double-dividing if they are already decimals
+        stab = raw_stab / 100.0 if raw_stab > 1 else raw_stab
+        sim = raw_sim / 100.0 if raw_sim > 1 else raw_sim
         try:
             _synthesize_elevenlabs(
                 text, out_path, api_key, vid, settings.elevenlabs_model_id,
